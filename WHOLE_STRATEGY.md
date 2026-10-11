@@ -14,6 +14,16 @@ India's 500 largest companies, throw out the risky ones, find stocks that are
 "resting" after a strong run, wait for them to wake up with force, buy a small
 amount, and always keep an automatic emergency exit ready.**
 
+**The thumb rule every change is judged by:** *less percentage profit in fewer
+days is much better than more percentage profit in more days.* So strategies are
+ranked by **speed of profit**: net profit per day the money is in a trade (shown as
+"% per 30 days invested"), alongside yearly account growth. On 2026-10-11, ten
+faster alternatives (shorter time stops, maximum holds of 5–10 days, take-profits
+at +3/+5/+10%, and the 4-day mean-reversion strategy) were tested on this rule.
+**None beat the current exits.** Selling sooner cut each trade's profit by more
+than it saved in days. The current strategy makes about +1.8–2.0% per 30 days
+invested, holding ~18 days per trade.
+
 ---
 
 ## 2. The dictionary — every technical word, explained once
@@ -402,6 +412,13 @@ Extra rigor:
 
 ## Changelog
 
+- **2026-10-11** — **Thumb rule adopted as the ranking rule:** less % profit in fewer
+  days beats more % in more days, measured as profit per day invested. A pre-registered
+  test of 11 faster alternatives (docs/TEST_PLAN_2026_10C.md) found **the current exits
+  already fastest**: +1.75% (2021–24) and +1.99% (2025–26) per 30 days invested, median
+  over rolling start dates. Take-profits at +3/+5/+10%, 5- and 10-day maximum holds, and
+  the fast strategies (mean reversion at 4 days per trade: −4.7% per 30 days) were all
+  slower or lost money. No rule changed. Every backtest now prints its speed of profit.
 - **2026-10-11** — **Breakout volume requirement lowered from 2.0× to 1.5×**, in the
   AutoShare2 research code. It was the only change to pass a pre-registered batch of
   14 tests (docs/TEST_RESULTS_2026_10.md). On ₹50k it went from 130 → 161 trades with

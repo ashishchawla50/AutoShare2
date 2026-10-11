@@ -163,3 +163,40 @@ the new default (volume 1.5×, −7% stop, current exits). Days held are calenda
   −21% CAGR. No tested strategy has delivered "2% in 5 days" repeatably on NSE after costs.
 - **The baseline already does what it can:** about 18 calendar days per trade and +5.7–7.0% CAGR
   (median). It stays.
+
+---
+
+## Batch C: speed-of-profit rule (plan `docs/TEST_PLAN_2026_10C.md`, committed `22a4ff1` before running)
+
+**The user's thumb rule:** *less % profit in fewer days is much better than more % in more days.*
+Speed = net P&L ÷ rupee-days in positions, shown per 30 days invested. Medians over 11 DEV and 4
+OOS rolling start dates. Days held are calendar days; "idle" means no position open.
+
+| Candidate | DEV speed /30d | DEV CAGR | DEV PF | DEV days | DEV idle | OOS speed /30d | OOS CAGR | OOS PF | OOS days | OOS idle | Makes money | Faster both |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **baseline (current)** | **+1.75%** | +7.0% | 1.32 | 18.4 | 16% | **+1.99%** | +5.7% | 1.55 | 18.8 | 38% | yes | — |
+| T1 time stop 10d (<7%) | +2.73% | +13.2% | 1.42 | 15.4 | 18% | +1.73% | +4.1% | 1.34 | 13.7 | 46% | yes | no |
+| T2 day 5+, exit if <2% | +3.23% | +15.4% | 1.58 | 14.1 | 21% | −2.31% | −3.6% | 0.72 | 9.7 | 49% | no | no |
+| T3 max hold 10 days | −1.10% | −3.9% | 0.87 | 11.3 | 20% | +1.74% | +3.7% | 1.27 | 11.5 | 47% | no | no |
+| T4 max hold 5 days | −0.00% | +0.0% | 1.00 | 6.6 | 28% | −0.99% | −1.1% | 0.93 | 6.8 | 54% | no | no |
+| P1 take profit +3% | −2.32% | −6.6% | 0.81 | 5.7 | 31% | −1.29% | −1.5% | 0.85 | 7.7 | 57% | no | no |
+| P2 take profit +5% | −0.12% | −0.4% | 0.99 | 8.3 | 25% | +0.85% | +1.8% | 1.16 | 9.6 | 54% | no | no |
+| P3 take profit +10% | −0.33% | −1.1% | 0.96 | 11.2 | 19% | +1.97% | +4.4% | 1.42 | 13.6 | 44% | no | no |
+| C1 TP +5% & max 10d | −1.07% | −3.6% | 0.90 | 7.3 | 26% | −1.05% | −1.2% | 0.89 | 8.4 | 59% | no | no |
+| R-mr mean reversion | −4.66% | −20.8% | 0.61 | 4.2 | 16% | −6.04% | −21.6% | 0.57 | 4.2 | 28% | no | no |
+| R-mom momentum | −0.33% | −1.7% | 0.95 | 12.7 | 3% | +0.52% | +1.8% | 1.08 | 12.5 | 17% | no | no |
+| R-bo 20-day breakout | −1.30% | −5.3% | 0.85 | 7.8 | 12% | −5.09% | −14.4% | 0.50 | 8.4 | 27% | no | no |
+
+**Winner under rule R3: the baseline (no change).**
+
+- **Under the thumb rule itself, the current exits are fastest in 2025–26** (+1.99% per 30 days
+  invested). Every take-profit and maximum-hold variant made *less* per day. Cutting a trade
+  short shrank its profit faster than it shortened the hold, because the losers still run their
+  full −7% while the winners get capped.
+- **T1 (10-day time stop) and T2 were faster in 2021–24 but slower in 2025–26.** That is the
+  recurring DEV-only pattern. T1 still made money in both windows and is the one to re-test with
+  fresh data.
+- **Fast is not the same as profitable.** Mean reversion is the quickest (4 days) and loses about
+  5–6% per 30 days invested.
+- **The real limit is signal supply, not holding time.** Money sits idle 16–59% of days. Faster
+  exits only add idle days (P1: 57% idle in OOS). More good signals is the lever for speed.

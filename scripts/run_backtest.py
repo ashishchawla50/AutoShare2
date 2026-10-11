@@ -92,6 +92,21 @@ def _funnel(strategy: str, s: dict) -> str:
     return head + " | ".join(parts) + " | " + tail
 
 
+def _speed(engine) -> str:
+    """The thumb rule's measure (docs/TEST_PLAN_2026_10C.md): profit per day the money is
+    in a trade. Less % in fewer days beats more % in more days."""
+    t = engine._closed_trades
+    if not t:
+        return "Speed of profit: no trades"
+    days = [max(1, (x["exit_date"] - x["entry_date"]).days) for x in t]
+    rupee_days = sum(x["entry_price"] * x["shares"] * d for x, d in zip(t, days))
+    pnl = sum(x["realised_pnl"] for x in t)
+    cal = sorted(engine._equity_curve)
+    idle = sum(not any(x["entry_date"] <= d < x["exit_date"] for x in t) for d in cal) / max(1, len(cal))
+    return (f"Speed of profit (thumb rule): {pnl / rupee_days * 30 * 100:+.2f}% per 30 days invested | "
+            f"avg {sum(days) / len(days):.1f} calendar days per trade | no position on {idle:.0%} of days")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="Fast strategy backtest (reconstructed dataset)")
     p.add_argument("--strategy", choices=STRATEGIES, default="vcp_v2")
@@ -156,6 +171,7 @@ def main() -> None:
              if args.strategy == "momentum_v4" else "")
           + f" | drawdown-halt days: {s['dd_halted_days']}"
           + (f" (first {engine._dd_halted_on})" if engine._dd_halted_on else ""))
+    print(_speed(engine))
     print(f"Runtime: {time.perf_counter() - t0:.1f} s")
 
     if args.dump_trades:

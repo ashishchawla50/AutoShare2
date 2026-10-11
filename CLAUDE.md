@@ -537,6 +537,8 @@ Same methodology at pilot capital, ₹6,000 floor, real CNC costs (`--cost-model
 
 ## Important Notes for Future AI Sessions
 
+**THUMB RULE (the user's ranking rule): less % profit in fewer days is much better than more % profit in more days.** Rank strategies and exits by **speed of profit** = net P&L ÷ rupee-days in positions (`run_backtest.py` prints it as "% per 30 days invested"). A candidate must still make money (PF > 1, CAGR > 0). Always show CAGR and idle days next to it: faster exits raise speed only if good signals exist to reuse the money. Batch C (docs/TEST_PLAN_2026_10C.md) found the current exits fastest of 11 alternatives.
+
 0. **`WHOLE_STRATEGY.md` is a living plain-language explainer the user hands to third parties for analysis. Whenever you change the strategy, filters, sizing, regime rules, universe, or live status — or a notable pilot event occurs — update it (including its funnel numbers, watchlist count, scoreboard, and changelog) in the same commit.**
 
 1. **Start by running `python scripts/validate_setup.py`** — it confirms all dependencies, databases, and env vars are correctly configured.
