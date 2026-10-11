@@ -126,3 +126,11 @@ before the next window.
   TOTP still succeed), so no token has been issued since 2026-08-28. Renew
   the app in the Kite developer console (or create a new one and update
   `.env`), then restart and confirm `/status` shows `authenticated: true`.
+- **2026-10-12 — static IP requirement.** Since 2026-04-01 (SEBI), Zerodha
+  rejects API orders that don't come from the IP registered on the Kite
+  profile. The VPS sends from 152.67.10.33, which must be registered there
+  before the first live trade. The Oracle public IP is *Ephemeral*, and the
+  owner chose to keep it rather than switch to a Reserved IP, which would
+  have been a new address. It survives reboots and stop/start. Never
+  terminate or recreate the instance, or remove its public IP: a new
+  address means rejected orders, including exits.

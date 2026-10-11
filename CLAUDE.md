@@ -332,6 +332,8 @@ The bot is **not** an HTTP API server. External surfaces are:
 - **Python:** `~/AutoShare2/venv/bin/python` (Python 3.10 virtualenv — the VPS has no 3.12; live code runs fine on 3.10)
 - **Process manager:** Supervisord — two supervised processes (`autoshare`, `auth_flask`); config is `supervisord.conf` in the repo, installed as `/etc/supervisor/conf.d/autoshare.conf`
 - **Firewall:** UFW — ports 22, 8080, 8081 open
+- **Static IP (SEBI rule, since 2026-04-01):** Zerodha rejects API orders, and likely GTT placement too, unless they come from the IP registered on the Kite profile. The VPS sends from **152.67.10.33** (IPv4 only, checked 2026-10-12), which must be the registered IP. The bot never placed a live order before this rule was noticed, so it is untested until the first trade.
+- **The public IP is Ephemeral, not Reserved (owner decision 2026-10-12: keep it).** It survives reboots and stop/start, but **never terminate or recreate the instance, and never remove or change the VNIC's public IP**. Either one loses 152.67.10.33 for good, and Zerodha would then reject every bot order, including exits. If it ever changes: register the new IP on Zerodha, update the Kite app redirect URL (`http://<ip>:8080/callback`), and update this file.
 - **Retired:** `~/AutoShare_retired_2026-10-11/` (old AutoShare checkout, its data and logs, plus research DBs `bhavcopy.db`/`reconstructed.db`) and `~/autoshare.conf.retired-2026-10-12`. Keep for reference; nothing runs from it.
 
 ---
