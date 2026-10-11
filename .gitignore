@@ -61,3 +61,6 @@ __pycache__/
 
 # ── Fast-backtest array caches (regenerated from reconstructed.db) ───────────
 data/cache/
+
+# test-plan runner output (regenerate with tools/run_test_plan_2026_10.py)
+data/test_plan_2026_10/

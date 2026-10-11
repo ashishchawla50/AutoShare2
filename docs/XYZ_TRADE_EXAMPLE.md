@@ -14,7 +14,7 @@ Updated 2026-10-11.
 
 - **Capital:** ₹50,000 (the pilot). Each position is at most 20% of capital, so ₹10,000.
 - **XYZ** is in a strong uptrend and goes quiet between ₹94 and ₹98 for a few weeks.
-- One evening it closes at ₹99, above ₹98, on double the normal volume. That is the breakout.
+- One evening it closes at ₹99, above ₹98, on double the normal volume (the rule needs 1.5× since 2026-10-11). That is the breakout.
 - **Next morning we buy 100 shares at ₹100 = ₹10,000.**
 - **First stop loss: ₹90** (−10%). If it is hit right away, the loss is ₹1,000, which is 2% of
   capital: exactly the bot's risk limit per trade.

@@ -200,3 +200,20 @@ OOS rolling start dates. Days held are calendar days; "idle" means no position o
   5–6% per 30 days invested.
 - **The real limit is signal supply, not holding time.** Money sits idle 16–59% of days. Faster
   exits only add idle days (P1: 57% idle in OOS). More good signals is the lever for speed.
+
+---
+
+## Check after adoption: 1.5× vs 2.0× breakout volume (2026-10-11)
+
+Run after B3c was adopted, using the more reliable rolling-start method from Batch B/C. Speed is
+% per 30 days invested; medians over 11 DEV and 4 OOS start dates.
+
+| Volume | Full 2021-09→2026-08: PF / return / trades | DEV median CAGR / PF / speed | OOS median CAGR / PF / speed |
+|---|---|---|---|
+| 2.0× (old) | **1.20 / +18.0% / 177** | **+7.4%** / 1.28 / +1.70% | +3.4% / 1.51 / +1.77% |
+| 1.5× (current) | 1.04 / +4.3% / 224 | +7.0% / **1.32** / **+1.75%** | **+5.7%** / **1.55** / **+1.99%** |
+
+**Mixed.** The one continuous full-window run strongly favours 2.0×. The medians over 15 start
+dates favour 1.5× on PF and on speed of profit (the thumb rule), and on OOS CAGR. 1.5× stays, as
+it passed rule R and is faster under the thumb rule. But the gap is within the noise that
+start-date dependence produces. It should not go live until live trades or fresh data confirm it.

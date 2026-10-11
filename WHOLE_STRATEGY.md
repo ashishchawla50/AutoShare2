@@ -425,7 +425,10 @@ Extra rigor:
   PF 1.29 → 1.32 in 2021–24, and 39 → 50 trades with PF 1.78 → 1.95 in 2025–26. The same
   batch found the edge **fragile**: only 2 of 5 years profitable, and a 28% chance of a
   20% drawdown at ₹50k. Partial profits, the RS gate and a −10% first stop all failed
-  and stay as they are. **Not yet deployed to the live VPS.**
+  and stay as they are. **Caveat found afterwards:** one continuous 2021–2026 run is
+  *worse* at 1.5× (PF 1.04 vs 1.20). Medians over 15 start dates are slightly better
+  (speed of profit +1.99% vs +1.77% per 30 days in 2025–26), so it stays, but the
+  margin is thin. **Not yet deployed to the live VPS** (still 2.0×).
 - **2026-08-11** — Document refreshed against the live bot: funnel numbers
   (442/500 pond, 151 past trend checks, 23 watched), regime now BULL, watchlist
   list rewritten, scoreboard re-checked directly against the database.

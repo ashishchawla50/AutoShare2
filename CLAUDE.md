@@ -338,10 +338,19 @@ The bot is **not** an HTTP API server. External surfaces are:
 **AutoShare2 (2026-10-11): restart of AutoShare, research-first and local-only.**
 - **Base:** code from AutoShare `3a727c6`, which is the validated `b218e83` engine plus the August reconstructed-dataset work.
 - **Do not use AutoShare `6ca6d37` ("old code", 2026-10-11).** It gutted `backtest_engine.py`: vcp_v2 deleted, regime gate hardcoded BULL, 4-stock fallback universe. It also rewrote config: `MAX_POSITIONS` 5, `MAX_DRAWDOWN_PCT` 0.05, mean reversion un-benched. Those four files were restored from `3a727c6`.
-- **Fast engine:** backtests now run in seconds (`scripts/fast_backtest.py`; see the Fast backtester section).
-- **vcp_v2 on the honest dataset** (reconstructed, ₹50k, CNC):
-  - full 2021-09→2026-08: PF 1.20, 177 trades, bootstrap 70.8%, **edge NOT confirmed**;
-  - 2025-01→2026-06: PF 1.78, 39 trades.
+- **Fast engine:** backtests run in seconds (`scripts/run_backtest.py` for any strategy; see the Fast backtester section).
+- **vcp_v2 on the honest dataset** (reconstructed, ₹50k, CNC), **at the old 2.0× breakout volume:**
+  - full 2021-09→2026-08: PF 1.20, 177 trades, bootstrap 70.8%, **edge NOT confirmed**
+  - 2025-01→2026-06: PF 1.78, 39 trades
+- **Current default since 2026-10-11 is 1.5× breakout volume** (test plan B3c). Evidence is **mixed**:
+  - full 2021-09→2026-08 continuous: **PF 1.04, +4.3%, 224 trades, bootstrap 54.6%** — worse than 2.0×
+  - 2025-01→2026-06: PF 1.95, +11.8%, 50 trades
+  - rolling-start medians (the more reliable method): slightly *better* than 2.0× — speed of profit
+    +1.75% vs +1.70% (DEV) and +1.99% vs +1.77% (OOS) per 30 days invested; OOS CAGR +5.7% vs +3.4%
+  - Kept under the thumb rule, but the margin is thin. **Not deployed to the live VPS**, which still runs 2.0×.
+- **October 2026 test batches** (`docs/TEST_RESULTS_2026_10.md`): the edge is fragile (2 of 5 years
+  profitable, 28% chance of a 20% drawdown at ₹50k, start-date dependent). Partial profits, the RS
+  gate, a −10% stop, B2 filters, faster exits and take-profits all failed pre-registered rules.
   - The 2026-07/08 validation numbers below came from the survivorship-biased `market_data.db` and are superseded.
 - Everything below this point describes AutoShare's history and live VPS deployment.
 

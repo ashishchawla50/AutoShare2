@@ -12,7 +12,7 @@ AutoShare is a fully automated equity swing trading bot for NSE (India) stocks, 
 
 - **Validated two-stage VCP entry (vcp_v2):**
   - 8-condition Minervini Trend Template + VCP pattern detection puts pivots on a persistent 30-day watchlist
-  - Entry only on a confirmed breakout through the stored pivot (strong close, 2x volume)
+  - Entry only on a confirmed breakout through the stored pivot (strong close, 1.5× volume since 2026-10-11; 2× before)
   - Benched (rejected in validation, no new entries): EMA momentum, 20-day breakout, Connors RSI-2
 
 - **9-filter stock scanner** — price, market cap, liquidity, listing age, promoter pledge, debt/equity, circuit hits, data quality, ASM/ESM surveillance + corporate events

@@ -11,7 +11,8 @@ rejected.** It tied in 2021–24 but fell to PF 1.01 in 2025–26 against 1.75. 
 RESULT" near the bottom. The per-signal study below is what led to the test.
 
 Both plans use the **same entry**: the vcp_v2 breakout. The stock is in a strong uptrend, goes
-quiet in a tight range, closes above the top of that range (the pivot) on 2× normal volume, and
+quiet in a tight range, closes above the top of that range (the pivot) on 2× normal volume (1.5× since 2026-10-11;
+all results in this file were run at 2×), and
 we buy at the next morning's open.
 
 ---
