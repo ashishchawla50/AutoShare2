@@ -49,7 +49,15 @@ class PortfolioManager:
         """
         if self._kite and not config.PAPER_TRADING_MODE:
             margins = self._kite.get_margins()
-            return float(margins.get("equity", {}).get("available", {}).get("live_balance", 0))
+            broker_cash = float(margins.get("equity", {}).get("available", {}).get("live_balance", 0))
+            # The Zerodha account also holds the owner's own cash, so the
+            # broker balance alone let the bot spend beyond its capital and
+            # ignore the reserve (2026-10-11 audit H1). Cap it at the bot's own
+            # cash: starting capital + realised P&L - cost of open positions,
+            # less the reserve on trading equity.
+            bot_cash = self._capital + self._get_total_realized_pnl() - self._get_invested_value()
+            reserved = self.get_trading_equity() * config.MIN_CASH_RESERVE_PCT
+            return max(0.0, min(broker_cash, bot_cash - reserved))
 
         invested = self._get_invested_value()
         portfolio_value = self._capital  # simplified for paper mode

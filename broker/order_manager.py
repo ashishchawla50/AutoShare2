@@ -199,7 +199,10 @@ class OrderManager:
     ) -> Optional[str]:
         """Replace an existing GTT stop-loss with a new price.
 
-        Kite has no GTT modify endpoint — we delete and re-create.
+        The new GTT is placed BEFORE the old one is deleted, so a failed
+        placement leaves the existing stop standing instead of leaving the
+        position unprotected (2026-10-11 audit M2). If both briefly exist and
+        both fire, the second sell is rejected because the shares are gone.
 
         Args:
             old_trigger_id: Current GTT trigger ID to remove.
@@ -208,15 +211,25 @@ class OrderManager:
             quantity:       Shares in the position.
 
         Returns:
-            New trigger_id, or None on failure.
+            New trigger_id, or None on failure (the old GTT is then kept).
         """
-        self._kite.delete_gtt(old_trigger_id)
         new_id = self.place_gtt_stop_loss(symbol, new_stop_price, quantity)
-        if new_id:
-            logger.info(
-                "GTT updated for %s: old=%s new=%s @ %.2f",
-                symbol, old_trigger_id, new_id, new_stop_price,
+        if not new_id:
+            logger.error(
+                "GTT update failed for %s — keeping existing GTT %s", symbol, old_trigger_id,
             )
+            from alerts.telegram_alert import send_system_error
+            send_system_error(
+                "OrderManager",
+                f"Could not raise GTT stop for {symbol} to {new_stop_price:.2f}; "
+                f"the previous GTT {old_trigger_id} is still active.",
+            )
+            return None
+        self._kite.delete_gtt(old_trigger_id)
+        logger.info(
+            "GTT updated for %s: old=%s new=%s @ %.2f",
+            symbol, old_trigger_id, new_id, new_stop_price,
+        )
         return new_id
 
     def sync_gtt_orders(self, expected: dict[str, str]) -> dict[str, bool]:
