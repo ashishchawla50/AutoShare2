@@ -412,6 +412,14 @@ Extra rigor:
 
 ## Changelog
 
+- **2026-10-11** — **Live-safety fixes from the Phase 1 audit (no strategy rule changed).**
+  (1) The exit check crashed the first time a live trailing stop needed raising, because two
+  share counts were only set when partial profits were on; the stop would have stayed at −7%
+  and later positions went unchecked. Fixed, and one position's error no longer stops the others.
+  (2) When raising a stop, the new GTT is now placed before the old one is cancelled, so a failed
+  placement never leaves a position without a stop. (3) Live "available cash" is now capped at
+  the bot's own ₹50k-based cash minus the 20% reserve; before, the owner's personal cash in the
+  same Zerodha account counted, so live could hold more and larger positions than the backtest.
 - **2026-10-11** — **Thumb rule adopted as the ranking rule:** less % profit in fewer
   days beats more % in more days, measured as profit per day invested. A pre-registered
   test of 11 faster alternatives (docs/TEST_PLAN_2026_10C.md) found **the current exits

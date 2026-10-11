@@ -904,126 +904,145 @@ class TradingBot:
 
         price_updates: dict[str, float] = {}
         for pos in positions:
-            symbol = pos["symbol"]
-            df = self._universe_ohlcv.get(symbol)
-            if df is None or df.empty:
-                continue
-
-            current_price = float(df["close"].iloc[-1])
-            price_updates[symbol] = current_price
-            entry_price = float(pos["entry_price"])
-            stop_loss = float(pos["stop_loss"])
-            strategy = pos.get("strategy", "vcp")
-
-            # ── Hard stop (both strategies) ──────────────────────────────
-            if should_exit_on_stop(current_price, stop_loss):
-                self._execute_exit(symbol, stop_loss, "stop_loss")
-                continue
-
-            # Normalise entry_date to a date object (may be stored as str in DB)
-            entry_date = pos["entry_date"]
-            if isinstance(entry_date, str):
-                from datetime import date as _date
-                entry_date = _date.fromisoformat(entry_date[:10])
-
-            # ── Momentum-specific exits ───────────────────────────────────
-            if strategy == "momentum":
-                target = float(pos.get("target_price") or 0)
-                if target > 0 and current_price >= target:
-                    self._execute_exit(symbol, current_price, "profit_target")
-                    continue
-                holding_days = (today_ist() - entry_date).days
-                if holding_days >= config.MOMENTUM_TIME_STOP_DAYS:
-                    self._execute_exit(symbol, current_price, "time_stop_momentum")
-                    continue
-                # No trailing stop / partial profit for momentum — fixed target only
-                continue
-
-            # ── Breakout-specific exits ───────────────────────────────────
-            if strategy == "breakout":
-                target = float(pos.get("target_price") or 0)
-                if target > 0 and current_price >= target:
-                    self._execute_exit(symbol, current_price, "profit_target")
-                    continue
-                from config.holidays import trading_days_between
-                days_held = trading_days_between(entry_date, today_ist())
-                if days_held >= config.BREAKOUT_TIME_STOP_DAYS:
-                    self._execute_exit(symbol, current_price, "time_stop_breakout")
-                    continue
-                continue
-
-            # ── Mean reversion exits ──────────────────────────────────────
-            if strategy == "mean_reversion":
-                from strategy.mean_reversion import should_exit_mean_reversion
-                from utils.indicator_utils import ema as _ema, rsi as _rsi
-                close_series = df["close"]
-                e5 = float(_ema(close_series, config.MR_EMA_EXIT).iloc[-1])
-                rsi2 = float(_rsi(close_series, config.MR_RSI_PERIOD).iloc[-1])
-                mr_exit, mr_reason = should_exit_mean_reversion(current_price, e5, rsi2)
-                if mr_exit:
-                    self._execute_exit(symbol, current_price, mr_reason)
-                    continue
-                from config.holidays import trading_days_between
-                days_held = trading_days_between(entry_date, today_ist())
-                if days_held >= config.MR_TIME_STOP_DAYS:
-                    self._execute_exit(symbol, current_price, "time_stop_mr")
-                    continue
-                continue
-
-            # ── VCP-specific exits ────────────────────────────────────────
-            should_exit, reason = check_technical_breakdown(
-                symbol, df, entry_price,
-                vcp_consolidation_low=pos.get("vcp_low"),
-            )
-            if should_exit:
-                self._execute_exit(symbol, current_price, reason)
-                continue
-
-            exit_time, reason = should_exit_on_time_stop(
-                pos["entry_date"], today_ist(), entry_price, current_price
-            )
-            if exit_time:
-                self._execute_exit(symbol, current_price, reason)
-                continue
-
-            if self._regime_state:
-                from exit.time_stop import check_regime_exit
-                should_regime_exit, reason = check_regime_exit(
-                    symbol, self._regime_state, pos["entry_date"],
-                    days_since_bear_start=self._days_in_bear,
-                )
-                if should_regime_exit:
-                    self._execute_exit(symbol, current_price, reason)
-                    continue
-
-            if config.ENABLE_PARTIAL_PROFIT:
-                total_shares = int(pos["shares"])
-                partial_sold = int(pos.get("partial_sold_shares", 0))
-                partial = check_partial_profit(entry_price, current_price, total_shares, partial_sold)
-                if partial:
-                    shares_to_sell, description = partial
-                    self._execute_partial_exit(symbol, current_price, shares_to_sell, description)
-
-            new_stop, reason = calculate_trailing_stop(
-                entry_price=entry_price,
-                current_price=current_price,
-                current_stop=stop_loss,
-                daily_ohlcv=df,
-            )
-            if new_stop > stop_loss and reason != "ratchet_hold":
-                order_mgr = OrderManager(self._kite)
-                old_gtt = pos.get("gtt_order_id")
-                new_gtt = None
-                if old_gtt and not config.PAPER_TRADING_MODE:
-                    new_gtt = order_mgr.update_gtt_stop_loss(old_gtt, symbol, new_stop, total_shares - partial_sold)
-                self._portfolio_manager.update_stop_loss(symbol, new_stop, new_gtt)
-                from alerts.telegram_alert import send_trailing_stop_updated
-                send_trailing_stop_updated(
-                    symbol, stop_loss, new_stop,
-                    (current_price - entry_price) / entry_price * 100,
+            # One position's failure must not stop the others from being
+            # checked (2026-10-11 audit C1: an exception here used to abort the
+            # whole loop every 5 minutes, leaving later positions unmanaged)
+            try:
+                self._check_position_exit(pos, price_updates)
+            except Exception as exc:
+                logger.exception("Exit check failed for %s", pos.get("symbol"))
+                send_system_error(
+                    "Exit",
+                    f"Exit check failed for {pos.get('symbol')}: {exc!r}. Other positions "
+                    f"were still checked; GTT stop remains in place.",
                 )
 
         self._portfolio_manager.update_current_prices(price_updates)
+
+    def _check_position_exit(self, pos: dict, price_updates: dict[str, float]) -> None:
+        """Evaluate one open position's exits and trailing stop (see check_exits)."""
+        symbol = pos["symbol"]
+        df = self._universe_ohlcv.get(symbol)
+        if df is None or df.empty:
+            return
+
+        current_price = float(df["close"].iloc[-1])
+        price_updates[symbol] = current_price
+        entry_price = float(pos["entry_price"])
+        stop_loss = float(pos["stop_loss"])
+        strategy = pos.get("strategy", "vcp")
+
+        # ── Hard stop (both strategies) ──────────────────────────────
+        if should_exit_on_stop(current_price, stop_loss):
+            self._execute_exit(symbol, stop_loss, "stop_loss")
+            return
+
+        # Normalise entry_date to a date object (may be stored as str in DB)
+        entry_date = pos["entry_date"]
+        if isinstance(entry_date, str):
+            from datetime import date as _date
+            entry_date = _date.fromisoformat(entry_date[:10])
+
+        # ── Momentum-specific exits ───────────────────────────────────
+        if strategy == "momentum":
+            target = float(pos.get("target_price") or 0)
+            if target > 0 and current_price >= target:
+                self._execute_exit(symbol, current_price, "profit_target")
+                return
+            holding_days = (today_ist() - entry_date).days
+            if holding_days >= config.MOMENTUM_TIME_STOP_DAYS:
+                self._execute_exit(symbol, current_price, "time_stop_momentum")
+                return
+            # No trailing stop / partial profit for momentum — fixed target only
+            return
+
+        # ── Breakout-specific exits ───────────────────────────────────
+        if strategy == "breakout":
+            target = float(pos.get("target_price") or 0)
+            if target > 0 and current_price >= target:
+                self._execute_exit(symbol, current_price, "profit_target")
+                return
+            from config.holidays import trading_days_between
+            days_held = trading_days_between(entry_date, today_ist())
+            if days_held >= config.BREAKOUT_TIME_STOP_DAYS:
+                self._execute_exit(symbol, current_price, "time_stop_breakout")
+                return
+            return
+
+        # ── Mean reversion exits ──────────────────────────────────────
+        if strategy == "mean_reversion":
+            from strategy.mean_reversion import should_exit_mean_reversion
+            from utils.indicator_utils import ema as _ema, rsi as _rsi
+            close_series = df["close"]
+            e5 = float(_ema(close_series, config.MR_EMA_EXIT).iloc[-1])
+            rsi2 = float(_rsi(close_series, config.MR_RSI_PERIOD).iloc[-1])
+            mr_exit, mr_reason = should_exit_mean_reversion(current_price, e5, rsi2)
+            if mr_exit:
+                self._execute_exit(symbol, current_price, mr_reason)
+                return
+            from config.holidays import trading_days_between
+            days_held = trading_days_between(entry_date, today_ist())
+            if days_held >= config.MR_TIME_STOP_DAYS:
+                self._execute_exit(symbol, current_price, "time_stop_mr")
+                return
+            return
+
+        # ── VCP-specific exits ────────────────────────────────────────
+        should_exit, reason = check_technical_breakdown(
+            symbol, df, entry_price,
+            vcp_consolidation_low=pos.get("vcp_low"),
+        )
+        if should_exit:
+            self._execute_exit(symbol, current_price, reason)
+            return
+
+        exit_time, reason = should_exit_on_time_stop(
+            pos["entry_date"], today_ist(), entry_price, current_price
+        )
+        if exit_time:
+            self._execute_exit(symbol, current_price, reason)
+            return
+
+        if self._regime_state:
+            from exit.time_stop import check_regime_exit
+            should_regime_exit, reason = check_regime_exit(
+                symbol, self._regime_state, pos["entry_date"],
+                days_since_bear_start=self._days_in_bear,
+            )
+            if should_regime_exit:
+                self._execute_exit(symbol, current_price, reason)
+                return
+
+        # Needed by the GTT update below whether or not partial profits are on
+        # (2026-10-11 audit C1: they were only set inside the partial-profit
+        # branch, so the first live stop ratchet raised UnboundLocalError)
+        total_shares = int(pos["shares"])
+        partial_sold = int(pos.get("partial_sold_shares", 0))
+
+        if config.ENABLE_PARTIAL_PROFIT:
+            partial = check_partial_profit(entry_price, current_price, total_shares, partial_sold)
+            if partial:
+                shares_to_sell, description = partial
+                self._execute_partial_exit(symbol, current_price, shares_to_sell, description)
+
+        new_stop, reason = calculate_trailing_stop(
+            entry_price=entry_price,
+            current_price=current_price,
+            current_stop=stop_loss,
+            daily_ohlcv=df,
+        )
+        if new_stop > stop_loss and reason != "ratchet_hold":
+            order_mgr = OrderManager(self._kite)
+            old_gtt = pos.get("gtt_order_id")
+            new_gtt = None
+            if old_gtt and not config.PAPER_TRADING_MODE:
+                new_gtt = order_mgr.update_gtt_stop_loss(old_gtt, symbol, new_stop, total_shares - partial_sold)
+            self._portfolio_manager.update_stop_loss(symbol, new_stop, new_gtt)
+            from alerts.telegram_alert import send_trailing_stop_updated
+            send_trailing_stop_updated(
+                symbol, stop_loss, new_stop,
+                (current_price - entry_price) / entry_price * 100,
+            )
 
     def _execute_exit(self, symbol: str, price: float, reason: str) -> None:
         """Place sell order and record position closure."""
