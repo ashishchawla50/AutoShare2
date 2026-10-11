@@ -37,7 +37,7 @@ def run():
 
 
 def test_partial_trades_exist_and_are_one_record(run):
-    split = [t for t in run._closed_trades if "after 50%" in t["exit_reason"]]
+    split = [t for t in run._closed_trades if "after partial" in t["exit_reason"]]
     assert split, "no trade reached +10% — window too short to exercise the mode"
     assert len({(t["isin"], t["entry_date"]) for t in run._closed_trades}) == len(run._closed_trades)
 
@@ -51,5 +51,5 @@ def test_no_trade_loses_more_than_first_stop_after_partial(run):
     # after the half-sale the stop sits at entry or above, so a split trade can only
     # lose through costs or a gap through the stop on the remaining half
     for t in run._closed_trades:
-        if "after 50%" in t["exit_reason"]:
+        if "after partial" in t["exit_reason"]:
             assert t["realised_pnl_pct"] > -6.0, t

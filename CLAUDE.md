@@ -561,5 +561,6 @@ Same methodology at pilot capital, ₹6,000 floor, real CNC costs (`--cost-model
 | `DIVERGENCE_INVENTORY.md` | Live-vs-backtest rule differences, severity-ranked (A1 RS gate + B1 partial profits are open) |
 | `GO_LIVE.md` | Live pilot runbook |
 | `docs/WINNING_STRATEGY.md` | Exit-plan study 2026-10-11: current exits vs my_strategy (sell 50% at +10%). Pre-registered portfolio test: **current exits stay**, my_strategy rejected (2025–26 PF 1.01 vs 1.75); 1%-risk/8-position setup earned ~0 |
+| `docs/TEST_PLAN_2026_10.md` / `docs/TEST_RESULTS_2026_10.md` | Pre-registered A–D test batch, 2026-10-11. Edge is fragile (2 of 5 years profitable, 28% chance of 20% DD); only breakout volume 1.5× passed; partial profits, RS gate, −10% stop, B2 filters all failed. Runner: `tools/run_test_plan_2026_10.py` |
 | `docs/XYZ_TRADE_EXAMPLE.md` | Plain-language ₹100 walk-through of both exit plans |
 | `TODO.md` / `ARCHITECTURE.md` / `DEPLOYMENT.md` | Backlog, design, VPS setup |

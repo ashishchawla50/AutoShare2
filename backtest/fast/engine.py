@@ -37,6 +37,7 @@ from backtest.performance_analyzer import BacktestMetrics, analyse, print_report
 from backtest.regime_sim import build_regime_series
 from config.config import config
 from config.holidays import get_trading_days
+from exit.profit_manager import check_partial_profit
 from exit.stop_loss_manager import TRAILING_RULES
 from risk.position_sizer import calculate_position_size, calculate_stop_loss_price
 
@@ -72,7 +73,7 @@ class _Pos:
     realised: float = 0.0        # net P&L already booked by partial sales
 
 
-EXIT_MODES = ("vcp", "my_strategy")
+EXIT_MODES = ("vcp", "my_strategy", "vcp_partials")
 MY_PARTIAL_AT = 0.10            # my_strategy: sell half when the high reaches +10%
 
 
@@ -95,10 +96,23 @@ class FastBacktestEngine:
         verbose: bool = True,
         ignore_regime: bool = False,
         exit_mode: str = "vcp",
+        slippage: float = 0.0,
+        caution_full_size: bool = False,
+        entry_filter=None,
     ) -> None:
+        """Research options (all off by default, so the oracle path is untouched):
+        exit_mode     "my_strategy" / "vcp_partials" (see _my_exit / _live_partials)
+        slippage      fraction per side: buys fill this much higher, sells this much lower
+        caution_full_size  trade CAUTIOUS days at full size instead of the regime's half
+        entry_filter  callable(engine, slot, p_row, ti, pend) -> bool, asked for every
+                      confirmed breakout; False drops it (its pivot is consumed)
+        """
         if exit_mode not in EXIT_MODES:
             raise ValueError(f"exit_mode must be one of {EXIT_MODES}")
         self._exit_mode = exit_mode
+        self._slip = slippage
+        self._caution_full = caution_full_size
+        self._entry_filter = entry_filter
         self.start_date = start_date
         self.end_date = end_date
         self.starting_capital = starting_capital
@@ -118,6 +132,7 @@ class FastBacktestEngine:
         self._uni = universe
         self._verbose = verbose
         self._stats = {k: 0 for k in _STATS}
+        self._stats["filtered"] = 0
         self._closed_trades: list[dict] = []
         self._equity_curve: dict[date, float] = {}
         self._regime_by_day: dict[date, tuple[str, float]] = {}
@@ -182,8 +197,9 @@ class FastBacktestEngine:
             raise MissingBenchmarkError(
                 f"NIFTY50 benchmark missing or too short "
                 f"({0 if nifty is None else len(nifty)} rows) for {data_start}→{self.end_date}")
+        self._breadth_s = self._breadth(nifty)
         self._regime_by_day = build_regime_series(
-            {}, nifty, trading_days, breadth=self._breadth(nifty))
+            {}, nifty, trading_days, breadth=self._breadth_s)
         self.timings["regime"] = time.perf_counter() - t0
 
     def _breadth(self, nifty: pd.DataFrame) -> pd.Series:
@@ -231,6 +247,8 @@ class FastBacktestEngine:
 
     def _close(self, slot: int, exit_price: float, exit_date: date, reason: str) -> None:
         p = self._open.pop(slot)
+        if self._slip:
+            exit_price *= 1 - self._slip
         shares = p.shares
         if p.sold_shares:                       # partial sale earlier: one record for the whole trade
             net_pnl = p.realised + self._leg_net(p, p.shares, exit_price)
@@ -238,7 +256,7 @@ class FastBacktestEngine:
             pnl_pct = net_pnl / (p.entry_price * shares)
             sell_value = exit_price * p.shares
             exit_price = (p.sold_value + sell_value) / shares     # average sell price
-            reason = f"{reason} (after 50% @+{MY_PARTIAL_AT:.0%})"
+            reason = f"{reason} (after partial sale)"
         else:
             net_pnl, pnl_pct = calculate_net_pnl(p.entry_price, exit_price, p.shares, self._costs)
             sell_value = exit_price * p.shares
@@ -262,6 +280,8 @@ class FastBacktestEngine:
     def _sell_part(self, p: _Pos, n: int, px: float) -> None:
         if not p.orig_shares:
             p.orig_shares = p.shares
+        if self._slip:
+            px *= 1 - self._slip
         sell_value = n * px
         self.capital += sell_value - calculate_sell_cost(sell_value, self._costs)
         p.realised += self._leg_net(p, n, px)
@@ -293,7 +313,20 @@ class FastBacktestEngine:
         """Non-stop exit for an open position on row r: (fill, reason) or None."""
         if self._exit_mode == "my_strategy":
             return self._my_exit(slot, p, r, ti)
-        return self._vcp_exit(slot, p, r, ti)
+        hit = self._vcp_exit(slot, p, r, ti)
+        if hit is None and self._exit_mode == "vcp_partials":
+            self._live_partials(p, r)
+        return hit
+
+    def _live_partials(self, p: _Pos, r: int) -> None:
+        """Live's partial booking, via the live function itself: on the day's close, after
+        the breakdown and time-stop checks, at most one tier per day (main.check_exits)."""
+        total = p.orig_shares or p.shares
+        hit = check_partial_profit(p.entry_price, float(self._md.close[r]), total, p.sold_shares)
+        if hit:
+            n = min(hit[0], p.shares)
+            if n > 0:
+                self._sell_part(p, n, float(self._md.close[r]))
 
     def _my_exit(self, slot: int, p: _Pos, r: int, ti: int) -> Optional[tuple[float, str]]:
         """my_strategy (docs/WINNING_STRATEGY.md): when the high reaches +10%, sell half at
@@ -437,6 +470,9 @@ class FastBacktestEngine:
             return False
         del self._pending[slot]
         st["high_conf"] += 1
+        if self._entry_filter is not None and not self._entry_filter(self, slot, p_row, ti, pend):
+            st["filtered"] += 1
+            return False
         entry_price = float(md.open[p_row + 1])
         stop_loss = calculate_stop_loss_price(entry_price)
 
@@ -445,6 +481,9 @@ class FastBacktestEngine:
             if gap > config.MAX_GAP_UP_PCT or gap < -0.03:
                 st["gap_filtered"] += 1
                 return False
+        if self._slip:
+            entry_price *= 1 + self._slip
+            stop_loss = calculate_stop_loss_price(entry_price)
         size = calculate_position_size(
             portfolio_value=self._portfolio_value(ti), entry_price=entry_price,
             stop_loss_price=stop_loss, regime_multiplier=regime_mult,
@@ -478,6 +517,7 @@ class FastBacktestEngine:
 
         t0 = time.perf_counter()
         for ti, sim_date in enumerate(trading_days):
+            self._sim_date = sim_date
             self._process_exits(sim_date, ti)
             pv = self._portfolio_value(ti)
             self._equity_curve[sim_date] = pv
@@ -489,7 +529,7 @@ class FastBacktestEngine:
                 if self._dd_halt:
                     continue
             self._regime_name, mult = self._regime_by_day.get(sim_date, ("BULL", 1.0))
-            if self._ignore_regime:
+            if self._ignore_regime or (self._caution_full and mult > 0.0):
                 mult = 1.0
             if mult <= 0.0:
                 self._stats["regime_blocked_days"] += 1
