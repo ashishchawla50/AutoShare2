@@ -62,7 +62,7 @@ def fetch_fundamentals(symbol: str) -> Optional[dict]:
     """
     url = _SCREENER_URL.format(symbol=symbol.upper())
     try:
-        resp = requests.get(url, headers=_HEADERS, timeout=15)
+        resp = requests.get(url, headers=_HEADERS, timeout=config.SCRAPE_HTTP_TIMEOUT_SECONDS)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "lxml")
         return _parse_screener_page(symbol, soup)
@@ -204,9 +204,9 @@ def refresh_all_fundamentals(symbols: list[str]) -> None:
         data = fetch_fundamentals(symbol)
         if data:
             save_fundamentals(data)
-        # Be respectful to Screener.in — 1 request per 2 seconds
-        time.sleep(2.0)
-        if (i + 1) % 20 == 0:
+        # Be respectful to Screener.in
+        time.sleep(config.NSE_SCRAPE_DELAY_SECONDS)
+        if (i + 1) % config.PROGRESS_LOG_EVERY == 0:
             logger.info("Fundamentals progress: %d/%d", i + 1, len(stale))
 
 

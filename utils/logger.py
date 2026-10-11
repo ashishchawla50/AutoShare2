@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from config.config import config
+
 
 class JSONFormatter(logging.Formatter):
     """Emit each log record as a single-line JSON object."""
@@ -32,13 +34,13 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
-def _make_rotating_handler(log_file: Path, max_bytes: int = 50 * 1024 * 1024) -> logging.Handler:
+def _make_rotating_handler(log_file: Path, max_bytes: int = config.LOG_MAX_BYTES) -> logging.Handler:
     """Create a size+time rotating file handler that compresses old files."""
     log_file.parent.mkdir(parents=True, exist_ok=True)
     handler = logging.handlers.RotatingFileHandler(
         filename=str(log_file),
         maxBytes=max_bytes,
-        backupCount=90,   # keep 90 rotated files (≈90 days)
+        backupCount=config.LOG_BACKUP_COUNT,
         encoding="utf-8",
     )
     handler.setFormatter(JSONFormatter())
@@ -51,7 +53,7 @@ def _make_timed_handler(log_file: Path) -> logging.Handler:
     handler = logging.handlers.TimedRotatingFileHandler(
         filename=str(log_file),
         when="midnight",
-        backupCount=90,
+        backupCount=config.LOG_BACKUP_COUNT,
         encoding="utf-8",
         utc=False,
     )
@@ -59,14 +61,14 @@ def _make_timed_handler(log_file: Path) -> logging.Handler:
     return handler
 
 
-def setup_logging(log_dir: str = "logs") -> None:
+def setup_logging(log_dir: str = None) -> None:
     """Configure the root logger and per-domain file handlers.
 
     Call once at application startup before any module imports.
     Each domain (trading, orders, scanner, risk, regime, data, errors)
     gets its own file so operators can tail the log they care about.
     """
-    base = Path(log_dir)
+    base = Path(log_dir or config.LOG_PATH)
     base.mkdir(parents=True, exist_ok=True)
 
     root = logging.getLogger()
@@ -82,24 +84,24 @@ def setup_logging(log_dir: str = "logs") -> None:
 
     # Domain-specific file handlers
     domain_handlers: dict[str, tuple[str, int]] = {
-        "trading":  ("logs/trading.log",  logging.DEBUG),
-        "orders":   ("logs/orders.log",   logging.DEBUG),
-        "scanner":  ("logs/scanner.log",  logging.DEBUG),
-        "risk":     ("logs/risk.log",     logging.DEBUG),
-        "regime":   ("logs/regime.log",   logging.DEBUG),
-        "data":     ("logs/data.log",     logging.DEBUG),
-        "errors":   ("logs/errors.log",   logging.WARNING),
+        "trading":  ("trading.log",  logging.DEBUG),
+        "orders":   ("orders.log",   logging.DEBUG),
+        "scanner":  ("scanner.log",  logging.DEBUG),
+        "risk":     ("risk.log",     logging.DEBUG),
+        "regime":   ("regime.log",   logging.DEBUG),
+        "data":     ("data.log",     logging.DEBUG),
+        "errors":   ("errors.log",   logging.WARNING),
     }
 
     for domain, (path, level) in domain_handlers.items():
-        handler = _make_timed_handler(Path(path))
+        handler = _make_timed_handler(base / path)
         handler.setLevel(level)
         logger = logging.getLogger(domain)
         logger.addHandler(handler)
         logger.propagate = True  # also goes to root (console)
 
     # errors.log catches all WARNING+ from every module
-    error_handler = _make_timed_handler(Path("logs/errors.log"))
+    error_handler = _make_timed_handler(base / "errors.log")
     error_handler.setLevel(logging.WARNING)
     root.addHandler(error_handler)
 

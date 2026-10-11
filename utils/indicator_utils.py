@@ -9,6 +9,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from config.config import config
+
 
 def ema(series: pd.Series, period: int) -> pd.Series:
     """Exponential moving average (adjust=False matches charting platforms)."""
@@ -20,7 +22,8 @@ def sma(series: pd.Series, period: int) -> pd.Series:
     return series.rolling(window=period).mean()
 
 
-def atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
+def atr(high: pd.Series, low: pd.Series, close: pd.Series,
+        period: int = config.ATR_DEFAULT_PERIOD) -> pd.Series:
     """Average True Range.
 
     True Range = max(high-low, |high-prev_close|, |low-prev_close|)
@@ -37,7 +40,7 @@ def atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> 
     return tr.ewm(span=period, adjust=False).mean()
 
 
-def rsi(series: pd.Series, period: int = 14) -> pd.Series:
+def rsi(series: pd.Series, period: int = config.RSI_DEFAULT_PERIOD) -> pd.Series:
     """Relative Strength Index (Wilder smoothing)."""
     delta = series.diff()
     gain = delta.clip(lower=0)
@@ -48,7 +51,7 @@ def rsi(series: pd.Series, period: int = 14) -> pd.Series:
     return 100 - (100 / (1 + rs))
 
 
-def volume_sma(volume: pd.Series, period: int = 50) -> pd.Series:
+def volume_sma(volume: pd.Series, period: int = config.VOLUME_SMA_DEFAULT_DAYS) -> pd.Series:
     """Simple moving average of volume."""
     return volume.rolling(window=period).mean()
 
@@ -92,7 +95,8 @@ def pct_change_from_low(series: pd.Series, lookback: int) -> pd.Series:
     return (series - rolling_low) / rolling_low
 
 
-def swing_highs(high: pd.Series, left: int = 5, right: int = 5) -> pd.Series:
+def swing_highs(high: pd.Series, left: int = config.SWING_DEFAULT_WINDOW,
+                right: int = config.SWING_DEFAULT_WINDOW) -> pd.Series:
     """Identify swing highs (local maxima) in a price series.
 
     Returns a boolean Series where True marks a confirmed swing high.
@@ -112,7 +116,8 @@ def swing_highs(high: pd.Series, left: int = 5, right: int = 5) -> pd.Series:
     return result
 
 
-def swing_lows(low: pd.Series, left: int = 5, right: int = 5) -> pd.Series:
+def swing_lows(low: pd.Series, left: int = config.SWING_DEFAULT_WINDOW,
+               right: int = config.SWING_DEFAULT_WINDOW) -> pd.Series:
     """Identify swing lows (local minima) in a price series.
 
     Returns a boolean Series where True marks a confirmed swing low.
@@ -161,11 +166,11 @@ def validate_ohlcv(df: pd.DataFrame) -> list[str]:
     # Only check the latest bar against the 50-day trailing median of prior bars.
     # Median is robust to legitimate high-volume events (F&O expiry, results day)
     # that would inflate a mean-based baseline and cause false positives.
-    if len(df) >= 10:
+    if len(df) >= config.VOLUME_SPIKE_MIN_ROWS:
         latest_vol = int(df["volume"].iloc[-1])
-        prior_vol = df["volume"].iloc[:-1].tail(50)
+        prior_vol = df["volume"].iloc[:-1].tail(config.VOLUME_SPIKE_LOOKBACK)
         median_vol = prior_vol.median()
-        if median_vol > 0 and latest_vol > median_vol * 25:
+        if median_vol > 0 and latest_vol > median_vol * config.VOLUME_SPIKE_MULT:
             ratio = int(latest_vol / median_vol)
             errors.append(
                 f"Latest volume {latest_vol:,} is {ratio}x the 50-day median "

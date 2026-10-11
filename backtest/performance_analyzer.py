@@ -16,6 +16,8 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from config.config import config
+
 logger = logging.getLogger("backtest.perf")
 
 
@@ -212,8 +214,10 @@ def print_report(metrics: BacktestMetrics) -> None:
 
     # Bootstrap confidence
     if not math.isnan(metrics.expectancy_prob):
-        flag = "  ✓ EDGE CONFIRMED" if metrics.expectancy_prob >= 0.80 else "  ✗ EDGE NOT CONFIRMED"
-        print(f"\nBootstrap P(E>0)  : {metrics.expectancy_prob:>7.1%}  (10,000 resamples){flag}")
+        flag = ("  ✓ EDGE CONFIRMED" if metrics.expectancy_prob >= config.EDGE_CONFIRMED_PROB
+                else "  ✗ EDGE NOT CONFIRMED")
+        print(f"\nBootstrap P(E>0)  : {metrics.expectancy_prob:>7.1%}  "
+              f"({config.BOOTSTRAP_SAMPLES:,} resamples){flag}")
 
     # Per-strategy breakdown (shown when --strategy all)
     if metrics.strategy_breakdown:
@@ -235,15 +239,16 @@ def print_report(metrics: BacktestMetrics) -> None:
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-def _bootstrap_expectancy_prob(pnl_values: np.ndarray, n_samples: int = 10_000) -> float:
+def _bootstrap_expectancy_prob(pnl_values: np.ndarray, n_samples: int = None) -> float:
     """P(mean trade P&L > 0) by bootstrap resampling.
 
-    Resamples the observed trade list 10,000 times and measures what fraction
-    of bootstrap samples have a positive mean P&L. ≥80% is the acceptance threshold.
+    Resamples the observed trade list BOOTSTRAP_SAMPLES times and measures what fraction
+    of bootstrap samples have a positive mean P&L. EDGE_CONFIRMED_PROB is the acceptance bar.
     """
-    if len(pnl_values) < 5:
+    n_samples = n_samples or config.BOOTSTRAP_SAMPLES
+    if len(pnl_values) < config.BOOTSTRAP_MIN_TRADES:
         return float("nan")
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(config.BOOTSTRAP_SEED)
     sample_means = rng.choice(pnl_values, size=(n_samples, len(pnl_values)), replace=True).mean(axis=1)
     return float((sample_means > 0).mean())
 
@@ -269,29 +274,29 @@ def _strategy_breakdown(trades_df: pd.DataFrame) -> dict:
     return result
 
 
-def _calc_sharpe(equity_curve: pd.Series, risk_free: float = 0.06) -> float:
-    """Annualised Sharpe ratio (assuming 252 trading days, 6% risk-free rate)."""
+def _calc_sharpe(equity_curve: pd.Series, risk_free: float = config.RISK_FREE_RATE) -> float:
+    """Annualised Sharpe ratio (TRADING_DAYS_PER_YEAR, RISK_FREE_RATE)."""
     if len(equity_curve) < 2:
         return 0.0
     returns = equity_curve.pct_change().dropna()
-    excess = returns - (risk_free / 252)
+    excess = returns - (risk_free / config.TRADING_DAYS_PER_YEAR)
     std = float(returns.std())
     if std == 0:
         return 0.0
-    return float(excess.mean() / std) * math.sqrt(252)
+    return float(excess.mean() / std) * math.sqrt(config.TRADING_DAYS_PER_YEAR)
 
 
-def _calc_sortino(equity_curve: pd.Series, risk_free: float = 0.06) -> float:
+def _calc_sortino(equity_curve: pd.Series, risk_free: float = config.RISK_FREE_RATE) -> float:
     """Annualised Sortino ratio (downside deviation only)."""
     if len(equity_curve) < 2:
         return 0.0
     returns = equity_curve.pct_change().dropna()
-    excess = returns - (risk_free / 252)
+    excess = returns - (risk_free / config.TRADING_DAYS_PER_YEAR)
     downside = returns[returns < 0]
     downside_std = float(downside.std()) if len(downside) > 1 else 0.0
     if downside_std == 0:
         return 0.0
-    return float(excess.mean() / downside_std) * math.sqrt(252)
+    return float(excess.mean() / downside_std) * math.sqrt(config.TRADING_DAYS_PER_YEAR)
 
 
 def _calc_max_drawdown(equity_curve: pd.Series) -> tuple[float, int]:

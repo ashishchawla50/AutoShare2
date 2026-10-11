@@ -97,7 +97,7 @@ class RegimeDetector:
         Regime upgrades require 2 consecutive days of confirmation.
         """
         nifty_close = float(self._nifty_ohlcv["close"].iloc[-1])
-        nifty_ema200 = float(ema(self._nifty_ohlcv["close"], 200).iloc[-1])
+        nifty_ema200 = float(ema(self._nifty_ohlcv["close"], config.REGIME_EMA_DAYS).iloc[-1])
         breadth = self._calculate_breadth()
         vix = get_india_vix()
 
@@ -164,7 +164,7 @@ class RegimeDetector:
         # (e.g. 0.9% below) with healthy breadth and low VIX is CAUTIOUS, not BEAR.
         breadth_weak = breadth < config.BEAR_BREADTH_THRESHOLD
         price_gap_pct = (nifty_close - nifty_ema200) / nifty_ema200  # negative = below
-        price_clearly_below_ema = price_gap_pct < -0.03  # more than 3% below
+        price_clearly_below_ema = price_gap_pct < -config.REGIME_BEAR_BELOW_EMA_PCT
         if breadth_weak or price_clearly_below_ema:
             return Regime.BEAR
 
@@ -182,7 +182,7 @@ class RegimeDetector:
             return Regime.BULL
 
         # Nifty within 5% above OR within 3% below the 200 EMA → CAUTIOUS
-        near_ema = abs(price_gap_pct) <= max(config.NIFTY_EMA_NEAR_PCT, 0.03)
+        near_ema = abs(price_gap_pct) <= max(config.NIFTY_EMA_NEAR_PCT, config.REGIME_NEAR_EMA_MIN_PCT)
         if near_ema or (config.BEAR_BREADTH_THRESHOLD <= breadth < config.BULL_BREADTH_THRESHOLD):
             return Regime.CAUTIOUS
 
@@ -245,36 +245,34 @@ class RegimeDetector:
         above = 0
         total = 0
         for symbol, df in self._universe_ohlcv.items():
-            if len(df) < 200:
+            if len(df) < config.REGIME_EMA_DAYS:
                 continue
-            ema200 = ema(df["close"], 200).iloc[-1]
+            ema200 = ema(df["close"], config.REGIME_EMA_DAYS).iloc[-1]
             current = df["close"].iloc[-1]
             total += 1
             if current > ema200:
                 above += 1
         if total == 0:
-            return 0.5  # neutral when no data
+            return config.REGIME_BREADTH_NEUTRAL  # neutral when no data
         return above / total
 
     def _is_nifty_trending_up(self) -> bool:
         """Return True if Nifty is making higher highs (20-day high above that of 4 weeks ago)."""
         close = self._nifty_ohlcv["close"]
-        if len(close) < 40:
+        hd = config.REGIME_TREND_HIGH_DAYS
+        if len(close) < 2 * hd:
             return False
-        current_20d_high = close.tail(20).max()
-        prior_20d_high = close.iloc[-40:-20].max()
+        current_20d_high = close.tail(hd).max()
+        prior_20d_high = close.iloc[-2 * hd:-hd].max()
         return float(current_20d_high) > float(prior_20d_high)
 
     def _position_multiplier(self, regime: Regime, vix: Optional[float]) -> float:
         """Return position size multiplier for the detected regime."""
-        if regime == Regime.BEAR or regime == Regime.EXTREME_VOLATILITY:
-            return 0.0
-        if regime == Regime.HIGH_VOLATILITY:
-            return 0.5
-        if regime == Regime.CAUTIOUS:
-            return 0.5
+        if regime in (Regime.BEAR, Regime.EXTREME_VOLATILITY, Regime.HIGH_VOLATILITY,
+                      Regime.CAUTIOUS):
+            return config.REGIME_SIZE_MULTIPLIER[regime.name]
         vix_mult = position_size_multiplier(vix)
-        return min(1.0, vix_mult)
+        return min(config.REGIME_SIZE_MULTIPLIER[Regime.BULL.name], vix_mult)
 
     def _log_regime(self, state: RegimeState) -> None:
         """Persist regime state to the history database."""

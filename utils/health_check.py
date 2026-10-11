@@ -22,8 +22,8 @@ from utils.time_utils import is_market_open, now_ist
 
 logger = logging.getLogger("trading.health")
 
-_HEARTBEAT_FILE = Path("data/.last_heartbeat")
-_HALT_FLAG_FILE = Path("data/emergency_halt.flag")
+_HEARTBEAT_FILE = Path(config.DB_PATH) / ".last_heartbeat"
+_HALT_FLAG_FILE = Path(config.DB_PATH) / "emergency_halt.flag"
 
 
 def record_heartbeat() -> None:
@@ -82,8 +82,8 @@ def clear_emergency_halt() -> None:
         logger.info("Emergency halt flag cleared")
 
 
-def start_http_health_server(port: int = 8081) -> threading.Thread:
-    """Start a lightweight HTTP server on port 8081 for uptime monitoring.
+def start_http_health_server(port: int = None) -> threading.Thread:
+    """Start a lightweight HTTP server (config.HEALTH_CHECK_PORT) for uptime monitoring.
 
     GET /health → 200 OK with JSON status
     GET /halt   → 200 OK indicating halt status
@@ -122,6 +122,7 @@ def start_http_health_server(port: int = 8081) -> threading.Thread:
     class _ReuseServer(http.server.HTTPServer):
         allow_reuse_address = True
 
+    port = config.HEALTH_CHECK_PORT if port is None else port
     server = _ReuseServer(("0.0.0.0", port), _Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

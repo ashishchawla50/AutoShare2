@@ -43,7 +43,7 @@ class TokenBucket:
                 if self._tokens >= tokens:
                     self._tokens -= tokens
                     return
-            time.sleep(0.05)
+            time.sleep(config.KITE_RATE_LIMIT_POLL_SECONDS)
 
     def _refill(self) -> None:
         now = time.monotonic()
@@ -233,7 +233,7 @@ class KiteClient:
             )
             return fake_id
 
-        for attempt in range(1, 4):
+        for attempt in range(1, config.KITE_MAX_ATTEMPTS + 1):
             try:
                 kwargs: dict[str, Any] = dict(
                     tradingsymbol=tradingsymbol,
@@ -258,8 +258,8 @@ class KiteClient:
             except Exception as exc:
                 err_str = str(exc)
                 # Don't retry exchange rejections — they won't self-heal
-                if any(k in err_str for k in ("InputException", "NetworkException")) and attempt < 3:
-                    delay = 2 ** attempt
+                if any(k in err_str for k in ("InputException", "NetworkException")) and attempt < config.KITE_MAX_ATTEMPTS:
+                    delay = config.KITE_RETRY_BACKOFF_BASE ** attempt
                     logger.warning(
                         "Order attempt %d failed (%s) — retrying in %ds", attempt, exc, delay
                     )

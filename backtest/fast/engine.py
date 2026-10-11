@@ -74,7 +74,6 @@ class _Pos:
 
 
 EXIT_MODES = ("vcp", "my_strategy", "vcp_partials")
-MY_PARTIAL_AT = 0.10            # my_strategy: sell half when the high reaches +10%
 
 
 class FastBacktestEngine:
@@ -87,7 +86,7 @@ class FastBacktestEngine:
         self,
         start_date: date,
         end_date: date,
-        starting_capital: float = 50_000.0,
+        starting_capital: float = config.STARTING_CAPITAL,
         cost_profile: str = "cnc",
         dd_halt: bool = True,
         market: Optional[MarketData] = None,
@@ -152,14 +151,14 @@ class FastBacktestEngine:
         self.timings["load"] = time.perf_counter() - t0
 
         t0 = time.perf_counter()
-        data_start = self.start_date - timedelta(days=730)
+        data_start = self.start_date - timedelta(days=config.BACKTEST_WARMUP_CALENDAR_DAYS)
         lo_day = np.datetime64(data_start, "D").astype(np.int64)
         hi_day = np.datetime64(self.end_date, "D").astype(np.int64)
         day_nums = np.array(trading_days, dtype="datetime64[D]").astype(np.int64)
         members = [self._uni.get_universe(d.isoformat()) for d in trading_days]
 
         # Slots = union of every monthly universe in the window, keeping securities
-        # with >= 210 candles in [data_start, end_date] — the set the reference
+        # with >= TT_MIN_HISTORY_DAYS candles in [data_start, end_date] — the set the reference
         # preloads, which also feeds regime breadth.
         isins: list[str] = []
         slot_of: dict[str, int] = {}
@@ -177,7 +176,7 @@ class FastBacktestEngine:
                 d = md.dates[a:b]
                 lo = a + int(np.searchsorted(d, lo_day, side="left"))
                 hi = a + int(np.searchsorted(d, hi_day, side="right"))
-                if hi - lo >= 210:
+                if hi - lo >= config.TT_MIN_HISTORY_DAYS:
                     slot_of[isin] = len(isins)
                     isins.append(isin)
                     a_l.append(a); lo_l.append(lo); hi_l.append(hi)
@@ -197,7 +196,7 @@ class FastBacktestEngine:
 
         t0 = time.perf_counter()
         nifty = load_nifty_ohlcv(data_start, self.end_date)
-        if nifty is None or len(nifty) < 220:
+        if nifty is None or len(nifty) < config.BACKTEST_MIN_BENCHMARK_ROWS:
             raise MissingBenchmarkError(
                 f"NIFTY50 benchmark missing or too short "
                 f"({0 if nifty is None else len(nifty)} rows) for {data_start}→{self.end_date}")
@@ -216,7 +215,8 @@ class FastBacktestEngine:
         for k in range(len(self._isins)):
             lo, hi = self._lo[k], self._hi[k]
             c = pd.Series(md.close[lo:hi])
-            e = c.ewm(span=200, adjust=False, min_periods=200).mean().to_numpy()
+            e = c.ewm(span=config.REGIME_EMA_DAYS, adjust=False,
+                      min_periods=config.REGIME_EMA_DAYS).mean().to_numpy()
             with np.errstate(invalid="ignore"):
                 flag = md.close[lo:hi] > e          # NaN warm-up compares False, as in pandas
             pos = np.searchsorted(nd, md.dates[lo:hi])
@@ -225,7 +225,7 @@ class FastBacktestEngine:
             np.add.at(num, pos_c[hit], flag[hit])
             np.add.at(den, pos_c[hit], 1.0)
         with np.errstate(invalid="ignore", divide="ignore"):
-            b = np.where(den > 0, num / den, 0.5)
+            b = np.where(den > 0, num / den, config.REGIME_BREADTH_NEUTRAL)
         return pd.Series(b, index=nifty.index)
 
     # ── helpers ──────────────────────────────────────────────────────────────
@@ -343,15 +343,15 @@ class FastBacktestEngine:
         half leaves only through the stop. Stop changes act from the next day."""
         md = self._md
         if not p.armed:
-            target = p.entry_price * (1 + MY_PARTIAL_AT)
+            target = p.entry_price * (1 + config.MY_STRATEGY_PARTIAL_AT)
             if float(md.high[r]) >= target:
-                half = p.shares // 2
+                half = int(p.shares * config.MY_STRATEGY_PARTIAL_FRACTION)
                 if half:
                     self._sell_part(p, half, max(target, float(md.open[r])))
                 p.armed = True
                 p.stop_loss = max(p.stop_loss, p.entry_price)
-        if p.armed and r - int(self._a[slot]) + 1 >= 10:
-            floor = float(self._sig.ema10[r]) * 0.97
+        if p.armed and r - int(self._a[slot]) + 1 >= config.STOP_EMA_FLOOR_DAYS:
+            floor = float(self._sig.ema10[r]) * config.STOP_EMA_FLOOR_MULT
             if floor > p.stop_loss:
                 p.stop_loss = floor
         return None
@@ -370,21 +370,21 @@ class FastBacktestEngine:
                     rule_stop = rs
                 break
         hist = r - int(self._a[slot]) + 1     # history length behind today's candle
-        if hist >= 10:
-            floor = float(sig.ema10[r]) * 0.97
+        if hist >= config.STOP_EMA_FLOOR_DAYS:
+            floor = float(sig.ema10[r]) * config.STOP_EMA_FLOOR_MULT
             if floor > rule_stop:
                 rule_stop = floor
         if rule_stop > p.stop_loss:
             p.stop_loss = rule_stop
 
         # Technical breakdown (check_technical_breakdown)
-        if hist >= 50:
+        if hist >= config.BREAKDOWN_MIN_HISTORY:
             if p.vcp_low and close < p.vcp_low:
                 return close, (f"Close {close:.2f} below VCP low "
                                f"{p.vcp_low:.2f} — breakout failed")
-            e50, vol, avg = float(sig.ema50[r]), float(md.volume[r]), float(sig.volsma50[r])
-            if close < e50 and vol > avg * 1.5:
-                return close, (f"Close {close:.2f} below 50-day EMA "
+            e50, vol, avg = float(sig.ema50[r]), float(md.volume[r]), float(sig.volsma_bd[r])
+            if close < e50 and vol > avg * config.BREAKDOWN_VOLUME_MULT:
+                return close, (f"Close {close:.2f} below {config.BREAKDOWN_EMA_DAYS}-day EMA "
                                f"{e50:.2f} on {vol / avg:.1f}x volume")
 
         # Time stop (should_exit_on_time_stop)
@@ -400,7 +400,7 @@ class FastBacktestEngine:
         if len(U) == 0:
             return
         n = self._n[ti, U]
-        valid = n >= 210
+        valid = n >= config.TT_MIN_HISTORY_DAYS
         if self._open:
             valid &= ~np.isin(U, np.fromiter(self._open, np.int64))
         prev = self._lo[U] + n.astype(np.int64) - 2        # scan candle (prev_day_df[-1])
@@ -473,7 +473,7 @@ class FastBacktestEngine:
                 and c >= h * config.STRONG_CLOSE_THRESHOLD
                 and c > o
                 and vol >= avg_vol * config.MIN_BREAKOUT_VOLUME_MULTIPLIER
-                and (h - l) / l > 0.005
+                and (h - l) / l > config.PIVOT_BREAKOUT_MIN_DAY_RANGE_PCT
                 and c <= pivot * (1 + config.MAX_ENTRY_EXTENSION_PCT)):
             return False
         del self._pending[slot]
@@ -486,7 +486,7 @@ class FastBacktestEngine:
 
         if c > 0:
             gap = (entry_price - c) / c
-            if gap > config.MAX_GAP_UP_PCT or gap < -0.03:
+            if gap > config.MAX_GAP_UP_PCT or gap < -config.MAX_GAP_DOWN_PCT:
                 st["gap_filtered"] += 1
                 return False
         if self._slip:
@@ -553,7 +553,7 @@ class FastBacktestEngine:
 
         ledger_error = abs(sum(t["realised_pnl"] for t in self._closed_trades)
                            - (self.capital - self.starting_capital))
-        assert ledger_error < 5.0, f"LEDGER MISMATCH err={ledger_error:.2f}"
+        assert ledger_error < config.LEDGER_TOLERANCE_RUPEES, f"LEDGER MISMATCH err={ledger_error:.2f}"
 
         eq = pd.Series(self._equity_curve)
         eq.index = pd.to_datetime(list(self._equity_curve.keys()))

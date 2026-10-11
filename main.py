@@ -169,7 +169,7 @@ class TradingBot:
         """Refresh fundamental data for stale symbols."""
         from data_fetcher.fundamental_fetcher import refresh_all_fundamentals
         symbols = load_universe()
-        refresh_all_fundamentals(symbols[:20])  # batch 20 at a time
+        refresh_all_fundamentals(symbols[:config.FUNDAMENTALS_BATCH_SIZE])
 
     def refresh_surveillance(self) -> None:
         """Refresh ASM/ESM surveillance lists."""
@@ -177,7 +177,7 @@ class TradingBot:
 
     def refresh_corporate_events(self) -> None:
         """Refresh upcoming corporate events."""
-        events = fetch_corporate_events(days_ahead=10)
+        events = fetch_corporate_events(days_ahead=config.EVENTS_FETCH_DAYS_AHEAD)
         save_events(events)
 
     def refresh_universe_ohlcv(self) -> None:
@@ -281,7 +281,7 @@ class TradingBot:
                 breakouts += 1
                 candidates.append(TradeSetup(
                     symbol=symbol,
-                    rs_percentile=rs_scores.get(symbol, pend.get("rs_percentile", 50.0)),
+                    rs_percentile=rs_scores.get(symbol, pend.get("rs_percentile", config.RS_DEFAULT_PERCENTILE)),
                     vcp_tightness_score=pend.get("tightness", 0.0),
                     trend_template_score=100.0,
                     volume_multiplier=bo.volume_multiplier,
@@ -307,7 +307,7 @@ class TradingBot:
                 fail_vcp += 1
                 continue
 
-            rs_pct = rs_scores.get(symbol, 50.0)
+            rs_pct = rs_scores.get(symbol, config.RS_DEFAULT_PERCENTILE)
             if add_symbol(
                 watch, symbol,
                 pivot=result.vcp_result.pivot_price,
@@ -348,7 +348,7 @@ class TradingBot:
 
             setup = TradeSetup(
                 symbol=symbol,
-                rs_percentile=50.0,         # RS not used for momentum ranking
+                rs_percentile=config.RS_DEFAULT_PERCENTILE,   # RS not used for momentum ranking
                 vcp_tightness_score=0.0,
                 trend_template_score=0.0,
                 volume_multiplier=result.volume_ratio,
@@ -386,7 +386,7 @@ class TradingBot:
 
             setup = TradeSetup(
                 symbol=symbol,
-                rs_percentile=50.0,
+                rs_percentile=config.RS_DEFAULT_PERCENTILE,
                 vcp_tightness_score=0.0,
                 trend_template_score=0.0,
                 volume_multiplier=1.0,
@@ -425,7 +425,7 @@ class TradingBot:
             stop_price = round(result.entry_price * (1 - config.BREAKOUT_STOP_PCT), 2)
             setup = TradeSetup(
                 symbol=symbol,
-                rs_percentile=50.0,
+                rs_percentile=config.RS_DEFAULT_PERCENTILE,
                 vcp_tightness_score=0.0,
                 trend_template_score=0.0,
                 volume_multiplier=result.volume_ratio,
@@ -1102,7 +1102,7 @@ class TradingBot:
             return
         order_mgr = OrderManager(self._kite)
         order_id = order_mgr.sell_cnc(symbol, shares, order_type="LIMIT",
-                                      limit_price=price * 0.999)
+                                      limit_price=price * (1 - config.PARTIAL_SELL_LIMIT_DISCOUNT))
         if order_id is None:
             # Sell failed — shares still held; leave the position untouched so
             # the booking is retried on the next exit check
@@ -1166,7 +1166,7 @@ class TradingBot:
             return  # live positions = account is active, no risk of sweep
 
         days = self._portfolio_manager.get_days_since_last_trade()
-        if days >= 25:
+        if days >= config.INACTIVITY_ALERT_DAYS:
             cash = self._portfolio_manager.get_available_cash()
             from alerts.telegram_alert import send_inactivity_warning
             send_inactivity_warning(days_since_trade=days, cash_in_zerodha=cash)
@@ -1260,7 +1260,8 @@ class TradingBot:
         # symbol still in Kite holdings is a genuine anomaly. Alert-only —
         # selling is a human decision here.
         open_syms = {p["symbol"].upper() for p in local_positions}
-        recent = self._portfolio_manager.get_recently_closed_trades(days=7)
+        recent = self._portfolio_manager.get_recently_closed_trades(
+            days=config.RECONCILE_RECENT_CLOSE_DAYS)
         orphans = sorted({
             t["symbol"].upper() for t in recent
             if t["symbol"].upper() not in open_syms
@@ -1312,7 +1313,7 @@ class TradingBot:
         # Primary: fetch from Kite using the NIFTY 50 index instrument token
         if self._kite.is_connected:
             nifty_inst = self._instrument_map.get("NIFTY 50")
-            token = nifty_inst.get("instrument_token") if nifty_inst else 256265
+            token = nifty_inst.get("instrument_token") if nifty_inst else config.NIFTY50_INSTRUMENT_TOKEN
             df = self._ohlcv_fetcher.get_ohlcv("NIFTY50", token, days=config.HISTORICAL_DAYS)
             if df is not None:
                 self._nifty_ohlcv = df
@@ -1349,7 +1350,7 @@ def main() -> None:
     bot.startup()
 
     # Start health check HTTP server
-    start_http_health_server(port=8081)
+    start_http_health_server(port=config.HEALTH_CHECK_PORT)
 
     # Setup APScheduler
     from scheduler import build_scheduler
@@ -1372,13 +1373,13 @@ def main() -> None:
     while True:
         try:
             record_heartbeat()
-            time.sleep(60)
+            time.sleep(config.MAIN_LOOP_SLEEP_SECONDS)
         except KeyboardInterrupt:
             handle_shutdown(None, None)
         except Exception as exc:
             logger.exception("Unhandled exception in main loop: %s", exc)
             send_system_error("main", str(exc)[:200])
-            time.sleep(30)
+            time.sleep(config.MAIN_LOOP_ERROR_SLEEP_SECONDS)
 
 
 if __name__ == "__main__":

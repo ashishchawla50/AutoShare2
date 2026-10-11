@@ -65,7 +65,7 @@ class BacktestEngine:
         self,
         start_date: date,
         end_date: date,
-        starting_capital: float = 500_000.0,
+        starting_capital: float = config.BACKTEST_DEFAULT_CAPITAL,
         strategy: str = "vcp",
         events_filter: bool = False,
         dd_halt: bool = True,
@@ -169,7 +169,7 @@ class BacktestEngine:
             "Ledger invariant: sum_pnl=%.2f  capital_change=%.2f  error=%.2f",
             total_realised_pnl, capital_change, ledger_error,
         )
-        assert ledger_error < 5.0, (
+        assert ledger_error < config.LEDGER_TOLERANCE_RUPEES, (
             f"LEDGER MISMATCH: sum_pnl={total_realised_pnl:.2f} "
             f"capital_change={capital_change:.2f} err={ledger_error:.2f} — "
             "check that entry deducts buy cost and exit credits sell_value - sell_cost"
@@ -447,12 +447,12 @@ class BacktestEngine:
                 continue
 
             df = self._ohlcv_cache.get(symbol)
-            if df is None or len(df) < 210:
+            if df is None or len(df) < config.TT_MIN_HISTORY_DAYS:
                 continue
 
             # Use data up to and including sim_date
             sim_df = df[df.index.date <= sim_date]  # type: ignore[attr-defined]
-            if len(sim_df) < 210:
+            if len(sim_df) < config.TT_MIN_HISTORY_DAYS:
                 continue
             self._stats["data_ok"] += 1
 
@@ -509,8 +509,8 @@ class BacktestEngine:
                     continue
                 from utils.indicator_utils import ema as _ema
                 closes = prev_day_df["close"].astype(float)
-                ema50 = _ema(closes, 50)
-                ema200 = _ema(closes, 200)
+                ema50 = _ema(closes, config.MOMENTUM3_STAGE2_EMA_FAST)
+                ema200 = _ema(closes, config.MOMENTUM3_STAGE2_EMA_SLOW)
                 stage2 = (
                     float(closes.iloc[-1]) > float(ema200.iloc[-1])
                     and float(ema50.iloc[-1]) > float(ema200.iloc[-1])
@@ -726,7 +726,7 @@ class BacktestEngine:
                 if gap_pct > config.MAX_GAP_UP_PCT:
                     self._stats["gap_filtered"] += 1
                     continue
-                if gap_pct < -0.03:
+                if gap_pct < -config.MAX_GAP_DOWN_PCT:
                     self._stats["gap_filtered"] += 1
                     continue
             portfolio_value = self._calc_portfolio_value(sim_date)
@@ -939,20 +939,21 @@ class BacktestEngine:
         """Pre-load all OHLCV data needed for the backtest period."""
         # Get the broadest universe needed
         symbols = self._pit_universe.get_universe(self.start_date)
-        data_start = self.start_date - timedelta(days=730)  # 2yr warmup captures full prior uptrend
+        # 2yr warmup captures full prior uptrend
+        data_start = self.start_date - timedelta(days=config.BACKTEST_WARMUP_CALENDAR_DAYS)
 
         logger.info("Pre-loading OHLCV for %d symbols...", len(symbols))
         loaded = 0
         for symbol in symbols:
             df = load_ohlcv(symbol, data_start, self.end_date)
-            if df is not None and len(df) >= 210:
+            if df is not None and len(df) >= config.TT_MIN_HISTORY_DAYS:
                 self._ohlcv_cache[symbol] = df
                 loaded += 1
         logger.info("Loaded %d/%d symbols", loaded, len(symbols))
 
         # Build the daily regime gate from historical Nifty + breadth
         nifty_df = load_nifty_ohlcv(data_start, self.end_date)
-        if nifty_df is None or len(nifty_df) < 220:
+        if nifty_df is None or len(nifty_df) < config.BACKTEST_MIN_BENCHMARK_ROWS:
             logger.warning(
                 "NIFTY50 history unavailable — regime gate DISABLED, every day "
                 "treated as BULL. Results overstate live trade frequency."
@@ -961,7 +962,7 @@ class BacktestEngine:
         # The regime needs EMA200 warmup BEFORE the backtest starts; a cache
         # that begins mid-window silently classifies everything CAUTIOUS.
         nifty_first = nifty_df.index.min().date()
-        warmup_deadline = self.start_date - timedelta(days=320)  # ~200 trading days
+        warmup_deadline = self.start_date - timedelta(days=config.BACKTEST_REGIME_WARMUP_CALENDAR_DAYS)
         if nifty_first > warmup_deadline:
             logger.warning(
                 "NIFTY50 cache starts %s but regime EMA200 warmup needs data from "
@@ -980,7 +981,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run strategy backtest")
     parser.add_argument("--start", required=True, help="Start date YYYY-MM-DD")
     parser.add_argument("--end", required=True, help="End date YYYY-MM-DD")
-    parser.add_argument("--capital", type=float, default=500_000.0)
+    parser.add_argument("--capital", type=float, default=config.BACKTEST_DEFAULT_CAPITAL)
     parser.add_argument("--strategy", default="vcp", choices=list(VALID_STRATEGIES))
     args = parser.parse_args()
 

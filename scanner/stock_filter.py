@@ -59,14 +59,15 @@ def filter_market_cap(symbol: str, market_cap_cr: Optional[float]) -> tuple[bool
 def filter_liquidity(
     symbol: str,
     daily_ohlcv: pd.DataFrame,
-    lookback_days: int = 30,
+    lookback_days: int = None,
 ) -> tuple[bool, str]:
-    """Filter 3: Average daily traded value ≥ ₹10 Cr.
+    """Filter 3: Average daily traded value ≥ config.MIN_DAILY_TRADED_VALUE_CR.
 
     Traded value (price × volume) is the liquidity measure that matters for
     fills; a raw share-count floor double-counts it and rejects high-priced
     liquid stocks, so value is the only test here (since 2026-07-29).
     """
+    lookback_days = lookback_days or config.LIQUIDITY_LOOKBACK_DAYS
     if len(daily_ohlcv) < lookback_days:
         return False, f"Insufficient data: {len(daily_ohlcv)} days < {lookback_days}"
 
@@ -95,8 +96,9 @@ def filter_surveillance(
 
 # Event-exclusion buffers — shared with the backtest engine's events filter
 # so both engines apply identical pond filtering (fidelity audit 2026-08-07).
-RESULTS_BUFFER_DAYS = 7
-OTHER_EVENT_BUFFER_DAYS = 3
+# The values live in config; these names are kept for existing importers.
+RESULTS_BUFFER_DAYS = config.RESULTS_BUFFER_DAYS
+OTHER_EVENT_BUFFER_DAYS = config.OTHER_EVENT_BUFFER_DAYS
 
 
 def filter_corporate_events(
@@ -124,15 +126,16 @@ def filter_corporate_events(
 def filter_circuit_breaker(
     symbol: str,
     daily_ohlcv: pd.DataFrame,
-    lookback_days: int = 60,
+    lookback_days: int = None,
 ) -> tuple[bool, str]:
-    """Filter 6: Exclude if more than 3 circuit breaker hits in last 60 days."""
+    """Filter 6: Exclude if more than MAX_CIRCUIT_HITS_60D circuit hits in the lookback."""
+    lookback_days = lookback_days or config.CIRCUIT_LOOKBACK_DAYS
     if len(daily_ohlcv) < lookback_days + 1:
         return True, ""  # insufficient data → don't exclude
 
     recent = daily_ohlcv.tail(lookback_days + 1)
     pct_changes = recent["close"].pct_change().abs()
-    circuit_hits = int((pct_changes > 0.19).sum())
+    circuit_hits = int((pct_changes > config.CIRCUIT_MOVE_PCT).sum())
 
     if circuit_hits > config.MAX_CIRCUIT_HITS_60D:
         return False, f"{circuit_hits} circuit hits in last {lookback_days} days (max {config.MAX_CIRCUIT_HITS_60D})"
@@ -180,9 +183,10 @@ def filter_ipo_age(
 
     ref_date = check_date or date.today()
     calendar_days = (ref_date - listing_date).days
-    # Approximate: 252 trading days ≈ 365 calendar days
-    if calendar_days < 365:
-        return False, f"Listed only {calendar_days} days ago (need 365+ ≈ 252 trading days)"
+    # Approximate: MIN_LISTING_DAYS trading days ≈ MIN_LISTING_CALENDAR_DAYS calendar days
+    if calendar_days < config.MIN_LISTING_CALENDAR_DAYS:
+        return False, (f"Listed only {calendar_days} days ago "
+                       f"(need {config.MIN_LISTING_CALENDAR_DAYS}+ calendar days)")
     return True, ""
 
 
@@ -193,11 +197,12 @@ def filter_data_quality(
 ) -> tuple[bool, str]:
     """Filter 9: Exclude stocks with data quality issues."""
     ref_date = check_date or date.today()
-    start_90 = ref_date - timedelta(days=90)
+    start_90 = ref_date - timedelta(days=config.DATA_QUALITY_WINDOW_DAYS)
 
     missing = count_missing_trading_days(daily_ohlcv, start_90, ref_date)
     if missing > config.MAX_MISSING_DAYS_90D:
-        return False, f"{missing} missing trading days in last 90 days (max {config.MAX_MISSING_DAYS_90D})"
+        return False, (f"{missing} missing trading days in last {config.DATA_QUALITY_WINDOW_DAYS} days "
+                       f"(max {config.MAX_MISSING_DAYS_90D})")
 
     # OHLC sanity
     if (daily_ohlcv["high"] < daily_ohlcv["low"]).any():

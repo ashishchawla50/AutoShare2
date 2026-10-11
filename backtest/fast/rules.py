@@ -42,7 +42,10 @@ _CFG = ("MR_EMA_TREND", "MR_EMA_EXIT", "MR_RSI_PERIOD", "MR_RSI_ENTRY",
         "MOMENTUM_MAX_PCT_FROM_HIGH", "MOMENTUM_RSI_MIN", "MOMENTUM_RSI_MAX",
         "MOMENTUM3_EMA200_RISE_DAYS",
         "BREAKOUT_LOOKBACK_DAYS", "BREAKOUT_VOLUME_MIN", "BREAKOUT_EMA_PERIOD",
-        "BREAKOUT_RSI_MAX", "BREAKOUT_RSI_MIN")
+        "BREAKOUT_RSI_MAX", "BREAKOUT_RSI_MIN",
+        "MOMENTUM3_STAGE2_EMA_FAST", "MOMENTUM3_STAGE2_EMA_SLOW", "MOMENTUM_RSI_PERIOD",
+        "BREAKOUT_RSI_PERIOD", "MOMENTUM_HIGH_LOOKBACK", "MOMENTUM_VOLUME_AVG_DAYS",
+        "BREAKOUT_VOLUME_AVG_LOOKBACK")
 
 
 @dataclass
@@ -105,17 +108,29 @@ def compute_rule_signals(md: MarketData) -> RuleSignals:
     e_bo = (e50 if config.BREAKOUT_EMA_PERIOD == config.MOMENTUM_EMA_SLOW
             else _per_security(md, lambda c: ema(c, config.BREAKOUT_EMA_PERIOD)))
     e200 = _per_security(md, lambda c: ema(c, config.MR_EMA_TREND))
-    e200_lag = _per_security(md, lambda c: ema(c, config.MR_EMA_TREND).shift(lag))
+    s2_fast = (e50 if config.MOMENTUM3_STAGE2_EMA_FAST == config.MOMENTUM_EMA_SLOW
+               else _per_security(md, lambda c: ema(c, config.MOMENTUM3_STAGE2_EMA_FAST)))
+    s2_slow = (e200 if config.MOMENTUM3_STAGE2_EMA_SLOW == config.MR_EMA_TREND
+               else _per_security(md, lambda c: ema(c, config.MOMENTUM3_STAGE2_EMA_SLOW)))
+    s2_slow_lag = _per_security(md, lambda c: ema(c, config.MOMENTUM3_STAGE2_EMA_SLOW).shift(lag))
     r2 = _per_security(md, lambda c: rsi(c, config.MR_RSI_PERIOD))
-    r14 = _per_security(md, lambda c: rsi(c, 14))
-    hi20 = _per_security(md, lambda c: c.rolling(20, min_periods=1).max())           # close.tail(20).max()
+    r14 = _per_security(md, lambda c: rsi(c, config.MOMENTUM_RSI_PERIOD))
+    r14_bo = (r14 if config.BREAKOUT_RSI_PERIOD == config.MOMENTUM_RSI_PERIOD
+              else _per_security(md, lambda c: rsi(c, config.BREAKOUT_RSI_PERIOD)))
+    hi20 = _per_security(md, lambda c: c.rolling(config.MOMENTUM_HIGH_LOOKBACK, min_periods=1).max())
     prior_hi = _per_security(md, lambda c: c.shift(1).rolling(lb, min_periods=1).max())
 
     avg20 = np.empty(N)
-    _prior_mean(md.volume, first, 20, avg20)          # volume.iloc[-21:-1].mean()
+    _prior_mean(md.volume, first, config.MOMENTUM_VOLUME_AVG_DAYS, avg20)   # volume.iloc[-21:-1].mean()
+    if config.BREAKOUT_VOLUME_AVG_LOOKBACK == config.MOMENTUM_VOLUME_AVG_DAYS:
+        avg_bo = avg20
+    else:
+        avg_bo = np.empty(N)
+        _prior_mean(md.volume, first, config.BREAKOUT_VOLUME_AVG_LOOKBACK, avg_bo)
     c, vol = md.close, md.volume
     with np.errstate(invalid="ignore", divide="ignore"):
         vol_ratio = np.where(avg20 > 0, vol / avg20, 0.0)
+        vol_ratio_bo = np.where(avg_bo > 0, vol / avg_bo, 0.0)
         pfh = np.where(hi20 > 0, (hi20 - c) / hi20, 1.0)
 
         # Later assignments win, so the gate the reference checks first takes precedence.
@@ -131,12 +146,12 @@ def compute_rule_signals(md: MarketData) -> RuleSignals:
         mom[(c <= e21) | (e21 <= e50)] = 2
 
         bo = np.full(N, PASS, np.int8)
-        bo[~np.isnan(r14) & ((r14 > config.BREAKOUT_RSI_MAX) | (r14 < config.BREAKOUT_RSI_MIN))] = 5
+        bo[~np.isnan(r14_bo) & ((r14_bo > config.BREAKOUT_RSI_MAX) | (r14_bo < config.BREAKOUT_RSI_MIN))] = 5
         bo[c <= e_bo] = 4
-        bo[vol_ratio < config.BREAKOUT_VOLUME_MIN] = 3
+        bo[vol_ratio_bo < config.BREAKOUT_VOLUME_MIN] = 3
         bo[~(c > prior_hi)] = 2
 
-        stage2 = (c > e200) & (e50 > e200) & (e200 > e200_lag)
+        stage2 = (c > s2_slow) & (s2_fast > s2_slow) & (s2_slow > s2_slow_lag)
 
     logger.info("Rule signals: %d rows | MR %d · momentum %d · breakout %d passing",
                 N, int((mr == PASS).sum()), int((mom == PASS).sum()), int((bo == PASS).sum()))
@@ -149,25 +164,30 @@ def compute_rule_signals(md: MarketData) -> RuleSignals:
 def mr_score(rs: RuleSignals, md: MarketData, g: int, first: int) -> float:
     c = md.close
     down = 0
-    for i in range(1, min(11, g - first + 1)):
+    for i in range(1, min(config.MR_CONSEC_DOWN_LOOKBACK + 1, g - first + 1)):
         if float(c[g - i + 1]) < float(c[g - i]):
             down += 1
         else:
             break
     rsi_score = max(0.0, (config.MR_RSI_ENTRY - float(rs.rsi2[g])) / config.MR_RSI_ENTRY * 100)
-    consec_score = min(100.0, down / 5 * 100)
+    consec_score = min(100.0, down / config.MR_SCORE_CONSEC_FULL * 100)
     pct_above = (float(c[g]) / float(rs.ema200[g]) - 1) * 100
-    trend_score = max(0.0, 50.0 - abs(pct_above - 10.0) * 2)
-    return round(rsi_score * 0.5 + consec_score * 0.3 + trend_score * 0.2, 2)
+    trend_score = max(0.0, config.MR_SCORE_TREND_BASE
+                      - abs(pct_above - config.MR_SCORE_TREND_CENTER_PCT) * config.MR_SCORE_TREND_SLOPE)
+    w_rsi, w_consec, w_trend = config.MR_SCORE_WEIGHTS
+    return round(rsi_score * w_rsi + consec_score * w_consec + trend_score * w_trend, 2)
 
 
 def mom_score(rs: RuleSignals, g: int) -> float:
     e21, e50 = float(rs.ema21[g]), float(rs.ema50[g])
-    ema_gap = min(100.0, ((e21 - e50) / e50) * 1000)
-    vol_score = min(100.0, (float(rs.vol_ratio[g]) - 1.5) / 3.5 * 100)
+    ema_gap = min(100.0, ((e21 - e50) / e50) * config.MOMENTUM_SCORE_EMA_GAP_SCALE)
+    vol_score = min(100.0, (float(rs.vol_ratio[g]) - config.MOMENTUM_SCORE_VOL_FLOOR)
+                    / config.MOMENTUM_SCORE_VOL_SPAN * 100)
     rs_score = (1.0 - float(rs.pct_from_high[g]) / config.MOMENTUM_MAX_PCT_FROM_HIGH) * 100
-    rsi_score = max(0.0, 100.0 - abs(float(rs.rsi14[g]) - 60.0) * 4)
-    return round(ema_gap * 0.30 + vol_score * 0.35 + rs_score * 0.25 + rsi_score * 0.10, 2)
+    rsi_score = max(0.0, 100.0 - abs(float(rs.rsi14[g]) - config.MOMENTUM_SCORE_RSI_CENTER)
+                    * config.MOMENTUM_SCORE_RSI_SLOPE)
+    w_gap, w_vol, w_rs, w_rsi = config.MOMENTUM_SCORE_WEIGHTS
+    return round(ema_gap * w_gap + vol_score * w_vol + rs_score * w_rs + rsi_score * w_rsi, 2)
 
 
 def bo_score(rs: RuleSignals, md: MarketData, g: int) -> float:
@@ -180,7 +200,10 @@ def bo_score(rs: RuleSignals, md: MarketData, g: int) -> float:
             days = i - 2
             break
     days = max(1, days)
-    vol_score = min(100.0, (float(rs.vol_ratio[g]) - 1.5) / 3.5 * 100)
-    rsi_score = max(0.0, 100.0 - abs(float(rs.rsi14[g]) - 60.0) * 3)
+    vol_score = min(100.0, (float(rs.vol_ratio[g]) - config.BREAKOUT_SCORE_VOL_FLOOR)
+                    / config.BREAKOUT_SCORE_VOL_SPAN * 100)
+    rsi_score = max(0.0, 100.0 - abs(float(rs.rsi14[g]) - config.BREAKOUT_SCORE_RSI_CENTER)
+                    * config.BREAKOUT_SCORE_RSI_SLOPE)
     days_score = min(100.0, days / lb * 100)
-    return round(vol_score * 0.5 + rsi_score * 0.3 + days_score * 0.2, 2)
+    w_vol, w_rsi, w_days = config.BREAKOUT_SCORE_WEIGHTS
+    return round(vol_score * w_vol + rsi_score * w_rsi + days_score * w_days, 2)

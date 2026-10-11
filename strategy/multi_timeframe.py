@@ -17,6 +17,7 @@ from typing import Optional
 
 import pandas as pd
 
+from config.config import config
 from strategy.breakout_detector import BreakoutResult, get_avg_volume_50d, is_valid_breakout
 from strategy.stage_analysis import Stage, StageResult, detect_stage
 from strategy.trend_template import TrendTemplateResult, passes_trend_template, trend_template_score
@@ -92,7 +93,7 @@ def analyse_stock(
             failure_reason=f"VCP invalid: {vcp_result.failure_reason}",
         )
 
-    if vcp_result.tightness_score < 50.0:
+    if vcp_result.tightness_score < config.VCP_MIN_TIGHTNESS_SCORE:
         return MultiTimeframeResult(
             symbol=symbol,
             is_high_confidence=False,
@@ -101,12 +102,14 @@ def analyse_stock(
             vcp_result=vcp_result,
             breakout_result=None,
             trend_template_score=tt_score,
-            failure_reason=f"VCP tightness {vcp_result.tightness_score:.0f} < 50",
+            failure_reason=(f"VCP tightness {vcp_result.tightness_score:.0f} "
+                            f"< {config.VCP_MIN_TIGHTNESS_SCORE:.0f}"),
         )
 
     # If no today_candle provided, we're in scan mode — don't check breakout
     if today_candle is None:
-        weinstein_bonus = 10.0 if stage_result and stage_result.stage == Stage.ADVANCING else 0.0
+        weinstein_bonus = (config.WEINSTEIN_STAGE2_BONUS
+                           if stage_result and stage_result.stage == Stage.ADVANCING else 0.0)
         return MultiTimeframeResult(
             symbol=symbol,
             is_high_confidence=True,
@@ -117,7 +120,7 @@ def analyse_stock(
             trend_template_score=tt_score,
             failure_reason="",
             weinstein_stage_bonus=weinstein_bonus,
-            suggested_stop_loss=vcp_result.consolidation_low * 0.97,
+            suggested_stop_loss=vcp_result.consolidation_low * config.VCP_MIN_LOW_VS_BASE_LOW,
         )
 
     # ── Step 4: Breakout Confirmation ────────────────────────────────────
@@ -139,11 +142,12 @@ def analyse_stock(
     # ── All checks passed — HIGH CONFIDENCE entry ────────────────────────
     entry_price = float(today_candle["close"])
     stop_loss = max(
-        vcp_result.consolidation_low * 0.97,
-        entry_price * (1 - 0.07),  # hard 7% stop as floor
+        vcp_result.consolidation_low * config.VCP_MIN_LOW_VS_BASE_LOW,
+        entry_price * (1 - config.HARD_STOP_PCT),  # hard stop as floor
     )
 
-    weinstein_bonus = 10.0 if stage_result and stage_result.stage == Stage.ADVANCING else 0.0
+    weinstein_bonus = (config.WEINSTEIN_STAGE2_BONUS
+                       if stage_result and stage_result.stage == Stage.ADVANCING else 0.0)
 
     logger.info(
         "HIGH CONFIDENCE setup: %s | Stage=%s | TT ✓ | VCP %.0f | ATR_ratio=%.2f | BO %.1fx vol",

@@ -43,7 +43,7 @@ def _nse_session() -> requests.Session:
     session = requests.Session()
     session.headers.update(_HEADERS)
     try:
-        session.get("https://www.nseindia.com/", timeout=15)
+        session.get("https://www.nseindia.com/", timeout=config.SCRAPE_HTTP_TIMEOUT_SECONDS)
         time.sleep(config.NSE_SCRAPE_DELAY_SECONDS)
     except requests.RequestException:
         pass
@@ -55,7 +55,7 @@ def fetch_asm_symbols() -> set[str]:
     session = _nse_session()
     symbols: set[str] = set()
     try:
-        resp = session.get(_ASM_URL, timeout=15)
+        resp = session.get(_ASM_URL, timeout=config.SCRAPE_HTTP_TIMEOUT_SECONDS)
         resp.raise_for_status()
         data = resp.json()
         for item in data.get("data", []):
@@ -73,7 +73,7 @@ def fetch_esm_symbols() -> set[str]:
     session = _nse_session()
     symbols: set[str] = set()
     try:
-        resp = session.get(_ESM_URL, timeout=15)
+        resp = session.get(_ESM_URL, timeout=config.SCRAPE_HTTP_TIMEOUT_SECONDS)
         resp.raise_for_status()
         data = resp.json()
         for item in data.get("data", []):

@@ -9,6 +9,7 @@ from typing import Optional
 import pandas as pd
 import numpy as np
 
+from config.config import config
 from config.holidays import get_trading_days
 from utils.indicator_utils import validate_ohlcv
 
@@ -44,10 +45,10 @@ def flag_data_anomalies(symbol: str, df: pd.DataFrame) -> list[str]:
     # Check for large single-day gaps that suggest a data error (not just a circuit)
     close = df["close"]
     pct_changes = close.pct_change().abs()
-    huge_moves = pct_changes[pct_changes > 0.50]
+    huge_moves = pct_changes[pct_changes > config.HUGE_MOVE_PCT]
     if not huge_moves.empty:
         issues.append(
-            f"{len(huge_moves)} day(s) with >50% price move (possible data error): "
+            f"{len(huge_moves)} day(s) with >{config.HUGE_MOVE_PCT:.0%} price move (possible data error): "
             f"{huge_moves.index.tolist()}"
         )
 
@@ -57,7 +58,7 @@ def flag_data_anomalies(symbol: str, df: pd.DataFrame) -> list[str]:
     return issues
 
 
-def forward_fill_ohlcv(df: pd.DataFrame, max_fill: int = 2) -> pd.DataFrame:
+def forward_fill_ohlcv(df: pd.DataFrame, max_fill: int = config.MAX_FORWARD_FILL_DAYS) -> pd.DataFrame:
     """Forward-fill OHLCV for up to `max_fill` consecutive missing days.
 
     Only fills close with prior close; sets volume to 0 for filled rows.
@@ -72,7 +73,7 @@ def forward_fill_ohlcv(df: pd.DataFrame, max_fill: int = 2) -> pd.DataFrame:
 def merge_ohlcv(
     primary: pd.DataFrame,
     secondary: pd.DataFrame,
-    tolerance_pct: float = 0.02,
+    tolerance_pct: float = config.PRICE_MATCH_TOLERANCE_PCT,
 ) -> tuple[pd.DataFrame, list[str]]:
     """Cross-validate two OHLCV DataFrames and return the merged result.
 

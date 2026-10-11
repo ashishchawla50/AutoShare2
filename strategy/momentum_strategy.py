@@ -59,8 +59,8 @@ def check_momentum(symbol: str, df: pd.DataFrame) -> MomentumResult:
         ema21=0.0, ema50=0.0, rsi14=0.0, volume_ratio=0.0,
     )
 
-    if len(df) < 60:
-        return _fail("Insufficient data (need 60 days)")
+    if len(df) < config.MOMENTUM_MIN_HISTORY:
+        return _fail(f"Insufficient data (need {config.MOMENTUM_MIN_HISTORY} days)")
 
     close = df["close"]
     volume = df["volume"]
@@ -68,13 +68,14 @@ def check_momentum(symbol: str, df: pd.DataFrame) -> MomentumResult:
     current_price = float(close.iloc[-1])
     e21 = float(ema(close, config.MOMENTUM_EMA_FAST).iloc[-1])
     e50 = float(ema(close, config.MOMENTUM_EMA_SLOW).iloc[-1])
-    rsi14 = float(rsi(close, 14).iloc[-1])
+    rsi14 = float(rsi(close, config.MOMENTUM_RSI_PERIOD).iloc[-1])
 
-    avg_vol_20d = float(volume.iloc[-21:-1].mean())  # prior 20 days, not today
+    n_vol = config.MOMENTUM_VOLUME_AVG_DAYS
+    avg_vol_20d = float(volume.iloc[-(n_vol + 1):-1].mean())  # prior N days, not today
     today_vol = float(volume.iloc[-1])
     vol_ratio = today_vol / avg_vol_20d if avg_vol_20d > 0 else 0.0
 
-    high_20d = float(close.tail(20).max())
+    high_20d = float(close.tail(config.MOMENTUM_HIGH_LOOKBACK).max())
     pct_from_high = (high_20d - current_price) / high_20d if high_20d > 0 else 1.0
 
     # ── Condition 1: price above fast EMA ────────────────────────────────
@@ -110,19 +111,22 @@ def check_momentum(symbol: str, df: pd.DataFrame) -> MomentumResult:
 
     # Score: weighted combination of momentum signals (0–100)
     # Higher EMA separation = stronger trend
-    ema_gap_score = min(100.0, ((e21 - e50) / e50) * 1000)
-    # Higher volume ratio = more conviction (capped at 5x)
-    vol_score = min(100.0, (vol_ratio - 1.5) / 3.5 * 100)
+    ema_gap_score = min(100.0, ((e21 - e50) / e50) * config.MOMENTUM_SCORE_EMA_GAP_SCALE)
+    # Higher volume ratio = more conviction (capped)
+    vol_score = min(100.0, (vol_ratio - config.MOMENTUM_SCORE_VOL_FLOOR)
+                    / config.MOMENTUM_SCORE_VOL_SPAN * 100)
     # Closer to 20d high = stronger relative strength
     rs_score = (1.0 - pct_from_high / config.MOMENTUM_MAX_PCT_FROM_HIGH) * 100
-    # RSI sweet spot: 55-65 scores highest
-    rsi_score = max(0.0, 100.0 - abs(rsi14 - 60.0) * 4)
+    # RSI sweet spot around the centre scores highest
+    rsi_score = max(0.0, 100.0 - abs(rsi14 - config.MOMENTUM_SCORE_RSI_CENTER)
+                    * config.MOMENTUM_SCORE_RSI_SLOPE)
 
+    w_gap, w_vol, w_rs, w_rsi = config.MOMENTUM_SCORE_WEIGHTS
     score = round(
-        ema_gap_score * 0.30
-        + vol_score    * 0.35
-        + rs_score     * 0.25
-        + rsi_score    * 0.10,
+        ema_gap_score * w_gap
+        + vol_score    * w_vol
+        + rs_score     * w_rs
+        + rsi_score    * w_rsi,
         2,
     )
 

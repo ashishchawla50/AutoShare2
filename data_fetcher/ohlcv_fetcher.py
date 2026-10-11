@@ -54,7 +54,7 @@ class OHLCVFetcher:
         self,
         symbol: str,
         instrument_token: int,
-        days: int = 500,
+        days: int = None,
         force_refresh: bool = False,
     ) -> Optional[pd.DataFrame]:
         """Return OHLCV DataFrame for a symbol, using cache when available.
@@ -69,6 +69,7 @@ class OHLCVFetcher:
             DataFrame with DatetimeIndex and columns [open, high, low, close, volume],
             or None if data cannot be fetched.
         """
+        days = config.HISTORICAL_DAYS if days is None else days
         cached = self._load_from_cache(symbol)
 
         if not force_refresh and cached is not None:
@@ -80,7 +81,8 @@ class OHLCVFetcher:
             # Cache is valid only if: data is current AND covers far enough back.
             # Without the second check, a 730-day cache blocks a 1500-day backfill
             # because days_missing==0 triggers an early return before older data is fetched.
-            if days_missing <= 0 and first_date <= expected_start + timedelta(days=30):
+            if days_missing <= 0 and first_date <= expected_start + timedelta(
+                    days=config.OHLCV_FRESH_TOLERANCE_DAYS):
                 return cached
 
         fresh = self._fetch_from_kite(symbol, instrument_token, days)
@@ -202,7 +204,7 @@ class OHLCVFetcher:
     def get_bulk_ohlcv(
         self,
         symbol_token_map: dict[str, int],
-        days: int = 500,
+        days: int = None,
     ) -> dict[str, pd.DataFrame]:
         """Fetch OHLCV for multiple symbols with rate limiting.
 
@@ -219,7 +221,7 @@ class OHLCVFetcher:
             df = self.get_ohlcv(symbol, token, days=days)
             if df is not None:
                 result[symbol] = df
-            if (i + 1) % 20 == 0:
+            if (i + 1) % config.PROGRESS_LOG_EVERY == 0:
                 logger.info("OHLCV progress: %d/%d symbols fetched", i + 1, total)
         logger.info("Bulk OHLCV complete: %d/%d symbols available", len(result), total)
         return result

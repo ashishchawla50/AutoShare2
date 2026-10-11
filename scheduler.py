@@ -14,6 +14,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
 
+from config.config import config
 from config.holidays import is_trading_day
 from utils.time_utils import today_ist
 
@@ -43,47 +44,44 @@ def build_scheduler(bot) -> BackgroundScheduler:
     """
     scheduler = BackgroundScheduler(timezone=IST)
 
-    jobs = [
+    # Job id → what it runs. WHEN it runs lives in config.SCHEDULE (IST crontab).
+    actions = {
         # Pre-market data refresh
-        ("universe_snapshot_refresh","30 5 * * *", lambda: bot.refresh_universe_snapshot()),
-        ("fundamentals_refresh",    "0 6 * * *",  lambda: bot.refresh_fundamentals()),
-        ("surveillance_refresh",    "0 7 * * *",  lambda: bot.refresh_surveillance()),
-        ("corporate_events_refresh","30 7 * * *", lambda: bot.refresh_corporate_events()),
-        ("auth_login_prompt",       "0 8 * * *",  lambda: bot.send_login_url()),
+        "universe_snapshot_refresh": lambda: bot.refresh_universe_snapshot(),
+        "fundamentals_refresh":      lambda: bot.refresh_fundamentals(),
+        "surveillance_refresh":      lambda: bot.refresh_surveillance(),
+        "corporate_events_refresh":  lambda: bot.refresh_corporate_events(),
+        "auth_login_prompt":         lambda: bot.send_login_url(),
         # Reconcile DB positions vs Kite holdings daily (live mode only):
         # catches GTT fired offline and manual sells, cancels dangling GTTs
-        ("holdings_reconcile",      "20 8 * * *", lambda: bot.reconcile_holdings()),
-        ("universe_ohlcv_refresh",  "30 8 * * *", lambda: bot.refresh_universe_ohlcv()),
-        ("pre_scan_filters",        "45 8 * * *", lambda: bot.run_pre_scan()),
-        ("strategy_scan",           "0 9 * * *",  lambda: bot.run_strategy_scan()),
-        ("momentum_scan",           "5 9 * * *",  lambda: bot.run_momentum_scan()),
-        ("breakout_scan",           "7 9 * * *",  lambda: bot.run_breakout_scan()),
-        ("mean_reversion_scan",     "8 9 * * *",  lambda: bot.run_mean_reversion_scan()),
-        ("regime_check_premarket",  "10 9 * * *", lambda: bot.check_regime()),
-        ("rank_opportunities",      "15 9 * * *", lambda: bot.rank_opportunities()),
-        ("gtt_verify",              "20 9 * * *", lambda: bot.verify_gtt_orders()),
-
-        # GTT backup monitor — every 60 seconds during market hours (safety net)
-        ("gtt_backup",              "* 9-15 * * *",    lambda: bot._gtt_monitor.run_once()),
-
-        # Market hours — every 5 minutes, 9:30–15:30
-        ("exit_check",              "*/5 9-15 * * *",  lambda: bot.check_exits()),
-        ("entry_window",            "*/5 9-10 * * *",  lambda: bot.check_entries()),
-
-        # Regime re-check every 30 minutes
-        ("regime_intraday",         "*/30 9-15 * * *", lambda: bot.check_regime()),
-
-        # Heartbeat every 30 minutes during market hours
-        ("heartbeat",               "*/30 9-15 * * *", lambda: bot.send_heartbeat()),
-
+        "holdings_reconcile":        lambda: bot.reconcile_holdings(),
+        "universe_ohlcv_refresh":    lambda: bot.refresh_universe_ohlcv(),
+        "pre_scan_filters":          lambda: bot.run_pre_scan(),
+        "strategy_scan":             lambda: bot.run_strategy_scan(),
+        "momentum_scan":             lambda: bot.run_momentum_scan(),
+        "breakout_scan":             lambda: bot.run_breakout_scan(),
+        "mean_reversion_scan":       lambda: bot.run_mean_reversion_scan(),
+        "regime_check_premarket":    lambda: bot.check_regime(),
+        "rank_opportunities":        lambda: bot.rank_opportunities(),
+        "gtt_verify":                lambda: bot.verify_gtt_orders(),
+        # GTT backup monitor during market hours (safety net)
+        "gtt_backup":                lambda: bot._gtt_monitor.run_once(),
+        # Market hours
+        "exit_check":                lambda: bot.check_exits(),
+        "entry_window":              lambda: bot.check_entries(),
+        "regime_intraday":           lambda: bot.check_regime(),
+        "heartbeat":                 lambda: bot.send_heartbeat(),
         # End of day
-        ("market_close_cleanup",    "30 15 * * *", lambda: bot.market_close()),
-        ("eod_report",              "45 15 * * *", lambda: bot.generate_eod_report()),
-        ("database_backup",         "30 16 * * *", lambda: bot.backup_databases()),
-
-        # Weekly report (Monday 7 AM)
-        ("weekly_report",           "0 7 * * 1",   lambda: bot.generate_weekly_report()),
-    ]
+        "market_close_cleanup":      lambda: bot.market_close(),
+        "eod_report":                lambda: bot.generate_eod_report(),
+        "database_backup":           lambda: bot.backup_databases(),
+        # Weekly report
+        "weekly_report":             lambda: bot.generate_weekly_report(),
+    }
+    missing = set(actions) ^ set(config.SCHEDULE)
+    if missing:
+        raise ValueError(f"config.SCHEDULE and scheduler actions disagree on jobs: {sorted(missing)}")
+    jobs = [(job_id, config.SCHEDULE[job_id], func) for job_id, func in actions.items()]
 
     for job_id, cron, func in jobs:
         wrapped = _trading_day_only(func) if "report" not in job_id and "backup" not in job_id else func
@@ -92,7 +90,7 @@ def build_scheduler(bot) -> BackgroundScheduler:
             trigger=CronTrigger.from_crontab(cron, timezone=IST),
             id=job_id,
             name=job_id,
-            misfire_grace_time=300,
+            misfire_grace_time=config.SCHEDULER_MISFIRE_GRACE_SECONDS,
             coalesce=True,
             max_instances=1,
         )

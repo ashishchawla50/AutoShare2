@@ -348,6 +348,293 @@ class TradingConfig:
     KITE_HISTORICAL_RATE_LIMIT: int = 200 # per minute
     NSE_SCRAPE_DELAY_SECONDS: float = 2.0  # be respectful to NSE servers
 
+    # ════════════════════════════════════════════════════════════════════════
+    # RULE CONSTANTS — the single source for every number a trading decision
+    # uses. Live code AND both backtest engines read these; nothing is typed
+    # into the code a second time. Moved here 2026-10-11 after a hardcoded 7%
+    # in strategy/multi_timeframe.py survived the switch to a 10% stop and the
+    # VCP tightness gate (50) was typed in three places that ignored
+    # VCP_MIN_TIGHTNESS_SCORE. Values are unchanged from the code they replaced
+    # (proven by the oracle fixtures and identical backtest ledgers).
+    # ════════════════════════════════════════════════════════════════════════
+
+    # ── Trend template (Minervini; all conditions required) ─────────────────
+    TT_MIN_HISTORY_DAYS: int = 210       # rows needed before the template is evaluated
+    TT_EMA_FAST: int = 50
+    TT_EMA_MID: int = 150
+    TT_EMA_SLOW: int = 200
+    # EMA200 must be above its value this many rows back (iloc[-N]; ~4 weeks)
+    TT_EMA_SLOW_RISING_LOOKBACK: int = 20
+    TT_52W_DAYS: int = 252               # trading days in the 52-week high/low window
+    TT_MIN_MULT_OF_52W_LOW: float = 1.25    # price >= 52w low x 1.25 (25% above the low)
+    TT_MIN_MULT_OF_52W_HIGH: float = 0.75   # price >= 52w high x 0.75 (within 25% of the high)
+
+    # ── VCP detection (strategy/vcp_detector.py == backtest/fast/kernels.py) ─
+    VCP_PRE_BASE_MIN_DAYS: int = 60      # history required before the consolidation window
+    VCP_MIN_PRIOR_UPTREND_PCT: float = 0.30  # base must follow a >= 30% run-up
+    VCP_SWING_WINDOW: int = 2            # bars each side for swing highs/lows in the base
+    VCP_MIN_SWING_RANGE_PCT: float = 0.01    # ignore micro swings below 1%
+    VCP_MIN_CONTRACTIONS: int = 2
+    VCP_MAX_CONTRACTIONS: int = 4        # more than this = messy base; keep the last N
+    VCP_MAX_RANGE_VIOLATIONS: int = 1    # one wider-than-previous swing allowed, only with ATR compression
+    VCP_ATR_FAST_DAYS: int = 10
+    VCP_ATR_SLOW_DAYS: int = 50
+    VCP_ATR_MIN_HISTORY: int = 55
+    VCP_ATR_COMPRESSED_BELOW: float = 0.7    # ATR10/ATR50 below this = genuinely coiling
+    VCP_MIN_LOW_VS_BASE_LOW: float = 0.97    # base low may undercut the prior low by at most 3%
+    # Tightness score (0-100): points by final contraction range, first match wins
+    VCP_TIGHTNESS_FINAL_RANGE_POINTS: tuple = ((0.05, 60.0), (0.10, 45.0), (0.15, 25.0))
+    VCP_TIGHTNESS_POINTS_PER_CONTRACTION: float = 5.0   # per contraction beyond the first
+    VCP_TIGHTNESS_CONTRACTION_CAP: float = 15.0
+    # final/first range ratio below threshold -> points, first match wins
+    VCP_TIGHTNESS_REDUCTION_POINTS: tuple = ((0.3, 10.0), (0.5, 5.0))
+    VCP_TIGHTNESS_VOLUME_BONUS: float = 15.0
+    VCP_TIGHTNESS_MAX: float = 100.0
+
+    # ── Breakout confirmation and entry gap ─────────────────────────────────
+    PIVOT_BREAKOUT_VOLUME_AVG_DAYS: int = 50       # breakout volume is compared to this SMA
+    PIVOT_BREAKOUT_MIN_DAY_RANGE_PCT: float = 0.005    # breakout candle range must exceed 0.5%
+    MAX_GAP_DOWN_PCT: float = 0.03           # entry-day gap-down beyond 3% = setup failed
+
+    # ── Exits (vcp_v2) ──────────────────────────────────────────────────────
+    # (profit reached, stop moves to entry x (1 + this)); highest reached tier wins
+    TRAILING_STOP_RULES: tuple = ((0.10, 0.0), (0.15, 0.05), (0.20, 0.10), (0.30, 0.20))
+    STOP_EMA_FLOOR_DAYS: int = 10            # stop never below EMA10 x multiplier...
+    STOP_EMA_FLOOR_MULT: float = 0.97        # ...once this much history exists
+    BREAKDOWN_MIN_HISTORY: int = 50          # rows needed before breakdown exits apply
+    BREAKDOWN_EMA_DAYS: int = 50             # close below EMA50...
+    BREAKDOWN_VOLUME_AVG_DAYS: int = 50
+    BREAKDOWN_VOLUME_MULT: float = 1.5       # ...on volume above 1.5x its 50-day SMA = exit
+    REVIEW_EMA_DAYS: int = 10                # two closes below EMA10 while profitable = review alert
+    # Partial profit tiers (profit reached, fraction of ORIGINAL shares sold); OFF via ENABLE_PARTIAL_PROFIT
+    PARTIAL_PROFIT_TIERS: tuple = ((0.20, 0.33), (0.30, 0.33))
+    PARTIAL_SELL_LIMIT_DISCOUNT: float = 0.001   # partial/limit sells placed at LTP x (1 - this)
+    REGIME_EXIT_BEAR_DAYS: int = 3           # BEAR this many days -> exit open positions
+    REGIME_EXIT_EXTREME_VOL_DAYS: int = 2    # EXTREME_VOLATILITY this many days -> exit
+    PRICE_TICK: float = 0.05                 # NSE tick size for stop/limit rounding
+    # my_strategy exit mode (research only, rejected 2026-10-11)
+    MY_STRATEGY_PARTIAL_AT: float = 0.10
+    MY_STRATEGY_PARTIAL_FRACTION: float = 0.5
+
+    # ── Regime (regime/regime_detector.py == backtest/regime_sim.py) ────────
+    REGIME_EMA_DAYS: int = 200               # Nifty and breadth are measured against EMA200
+    REGIME_BEAR_BELOW_EMA_PCT: float = 0.03  # Nifty > 3% below EMA200 = BEAR
+    REGIME_NEAR_EMA_MIN_PCT: float = 0.03    # CAUTIOUS band is at least +/-3% around EMA200
+    REGIME_TREND_HIGH_DAYS: int = 20         # Nifty trending = 20d high above the prior 20d high
+    REGIME_BREADTH_NEUTRAL: float = 0.5      # breadth assumed when no data
+    REGIME_SIZE_MULTIPLIER: dict = field(default_factory=lambda: {
+        "BULL": 1.0, "CAUTIOUS": 0.5, "HIGH_VOLATILITY": 0.5,
+        "BEAR": 0.0, "EXTREME_VOLATILITY": 0.0,
+    })
+    VIX_CAUTION_SIZE_MULT: float = 0.5       # VIX between CAUTION and REDUCE levels
+    VIX_HIGH_SIZE_MULT: float = 0.5          # VIX between REDUCE and HALT levels
+    VIX_CACHE_SECONDS: int = 300
+
+    # ── Drawdown tiers (risk/drawdown_monitor.py) ───────────────────────────
+    DD_REDUCE_SIZE_AT: float = 0.10          # peak drawdown >= 10% -> half size
+    DD_REDUCED_SIZE_MULT: float = 0.5
+    DD_HALT_ENTRIES_AT: float = 0.15         # >= 15% -> no new entries
+    WEEKLY_LOSS_WINDOW_DAYS: int = 7
+    MONTHLY_LOSS_WINDOW_DAYS: int = 30
+
+    # ── Relative strength (scanner/relative_strength.py == backtest/fast/features.py) ─
+    # (skip-start, end, weight) in trading days; skips the last month (reversal bias)
+    RS_SEGMENTS: tuple = ((21, 84, 0.4), (84, 147, 0.2), (147, 210, 0.2), (210, 252, 0.2))
+    RS_MIN_HISTORY_DAYS: int = 252
+    RS_PERCENTILE_SCALE: float = 99.0        # ranks are 0..99
+    RS_DEFAULT_PERCENTILE: float = 50.0      # used when a symbol has no RS score
+    MARKET_LEADER_RS: float = 85.0           # RS >= this flags a market leader
+
+    # ── Opportunity ranking (scanner/opportunity_ranker.py) ─────────────────
+    RANK_WEIGHT_RS: float = 0.35
+    RANK_WEIGHT_TIGHTNESS: float = 0.25
+    RANK_WEIGHT_TREND_TEMPLATE: float = 0.20
+    RANK_WEIGHT_VOLUME: float = 0.10
+    RANK_WEIGHT_ATR: float = 0.05
+    RANK_WEIGHT_WEINSTEIN: float = 0.05
+    # Volume score = (multiplier - FLOOR) / SPAN x 100, clipped 0..100. NOTE: the floor
+    # is still 2.0 (the old entry rule) although entries need only 1.5x since
+    # 2026-10-11, so 1.5-2.0x breakouts score 0 here. Kept as-is pending a decision.
+    RANK_VOLUME_SCORE_FLOOR: float = 2.0
+    RANK_VOLUME_SCORE_SPAN: float = 3.0
+    # (max % below 52w high, flat bonus), first match wins
+    RANK_52W_PROXIMITY_BONUS: tuple = ((0.10, 5.0), (0.15, 3.0))
+    WEINSTEIN_STAGE2_BONUS: float = 10.0
+    # Sector regime: share of a sector's stocks above EMA50 and higher than 20 days ago
+    SECTOR_MIN_HISTORY: int = 50
+    SECTOR_EMA_DAYS: int = 50
+    SECTOR_TREND_DAYS: int = 20
+    SECTOR_STRONG_AT: float = 0.60
+    SECTOR_NEUTRAL_AT: float = 0.40
+    SECTOR_WEAK_PENALTY: float = -10.0
+
+    # ── Weinstein stage analysis ────────────────────────────────────────────
+    STAGE_MIN_DAILY_ROWS: int = 200
+    STAGE_MIN_WEEKS: int = 40
+    STAGE_MA_SLOPE_WEEKS: tuple = (4, 8)     # MA rising = now > 4 weeks ago > 8 weeks ago
+    STAGE_VOLUME_WEEKS: int = 8
+
+    # ── Stock filters (scanner/stock_filter.py) ─────────────────────────────
+    LIQUIDITY_LOOKBACK_DAYS: int = 30
+    CIRCUIT_LOOKBACK_DAYS: int = 60
+    CIRCUIT_MOVE_PCT: float = 0.19           # a daily move above 19% counts as a circuit hit
+    MIN_LISTING_CALENDAR_DAYS: int = 365     # ~252 trading days
+    DATA_QUALITY_WINDOW_DAYS: int = 90
+    # Event-exclusion buffers, shared with the backtest events filter
+    RESULTS_BUFFER_DAYS: int = 7             # results within +/-7 days
+    OTHER_EVENT_BUFFER_DAYS: int = 3         # dividend/bonus/split ex-date within 3 days
+    EVENTS_FETCH_DAYS_AHEAD: int = 10
+
+    # ── Momentum v1 scoring (benched) ───────────────────────────────────────
+    MOMENTUM_MIN_HISTORY: int = 60
+    MOMENTUM_RSI_PERIOD: int = 14
+    MOMENTUM_HIGH_LOOKBACK: int = 20         # proximity to the 20-day high
+    MOMENTUM_VOLUME_AVG_DAYS: int = 20       # prior-20-day average volume
+    MOMENTUM_SCORE_EMA_GAP_SCALE: float = 1000.0
+    MOMENTUM_SCORE_VOL_FLOOR: float = 1.5
+    MOMENTUM_SCORE_VOL_SPAN: float = 3.5
+    MOMENTUM_SCORE_RSI_CENTER: float = 60.0
+    MOMENTUM_SCORE_RSI_SLOPE: float = 4.0
+    MOMENTUM_SCORE_WEIGHTS: tuple = (0.30, 0.35, 0.25, 0.10)   # ema gap, volume, RS, RSI
+
+    # ── Range breakout scoring (benched) ────────────────────────────────────
+    BREAKOUT_MIN_HISTORY: int = 60
+    BREAKOUT_RSI_PERIOD: int = 14
+    BREAKOUT_SCORE_VOL_FLOOR: float = 1.5
+    BREAKOUT_SCORE_VOL_SPAN: float = 3.5
+    BREAKOUT_SCORE_RSI_CENTER: float = 60.0
+    BREAKOUT_SCORE_RSI_SLOPE: float = 3.0
+    BREAKOUT_SCORE_WEIGHTS: tuple = (0.5, 0.3, 0.2)            # volume, RSI, days since prior high
+
+    # ── Mean reversion scoring (benched) ────────────────────────────────────
+    MR_MIN_EXTRA_BARS: int = 10              # needs MR_EMA_TREND + this many rows
+    MR_CONSEC_DOWN_LOOKBACK: int = 10        # count up to this many consecutive down days
+    MR_SCORE_CONSEC_FULL: float = 5.0        # this many down days = full consecutive score
+    MR_SCORE_TREND_BASE: float = 50.0
+    MR_SCORE_TREND_CENTER_PCT: float = 10.0  # ideal % above EMA200
+    MR_SCORE_TREND_SLOPE: float = 2.0
+    MR_SCORE_WEIGHTS: tuple = (0.5, 0.3, 0.2)                  # RSI, consecutive down, trend
+
+    # ── Momentum v3 stage-2 gate (benched) ──────────────────────────────────
+    MOMENTUM3_STAGE2_EMA_FAST: int = 50
+    MOMENTUM3_STAGE2_EMA_SLOW: int = 200
+
+    # ── Range breakout volume (benched) ─────────────────────────────────────
+    BREAKOUT_VOLUME_AVG_LOOKBACK: int = 20   # prior-20-day average volume (excludes today)
+
+    # ── Backtest data windows ───────────────────────────────────────────────
+    BACKTEST_WARMUP_CALENDAR_DAYS: int = 730     # history loaded before the start (indicator warm-up)
+    BACKTEST_MIN_BENCHMARK_ROWS: int = 220       # Nifty rows required for the regime EMA200
+    BACKTEST_REGIME_WARMUP_CALENDAR_DAYS: int = 320  # ~200 trading days of Nifty before the start
+    BACKTEST_DEFAULT_CAPITAL: float = 500_000.0  # reference engine CLI default
+    BACKTEST_DATASET_FLOOR: str = "2021-09-01"   # earliest start with a warmed-up regime benchmark
+    SPEED_WINDOW_DAYS: int = 30                  # thumb-rule speed is reported per 30 days invested
+    # Performance statistics (backtest/performance_analyzer.py)
+    RISK_FREE_RATE: float = 0.06             # annual, for Sharpe/Sortino
+    TRADING_DAYS_PER_YEAR: int = 252
+    BOOTSTRAP_SAMPLES: int = 10_000
+    BOOTSTRAP_SEED: int = 42
+    BOOTSTRAP_MIN_TRADES: int = 5
+    EDGE_CONFIRMED_PROB: float = 0.80        # bootstrap P(mean trade > 0) needed to call an edge
+    LEDGER_TOLERANCE_RUPEES: float = 5.0     # capital vs trade-ledger reconciliation tolerance
+    # Research feature book (backtest/fast/features.py, B2 filters)
+    FEATURE_ATR_DAYS: int = 14
+    FEATURE_REL_STRENGTH_DAYS: int = 63
+    FEATURE_NIFTY_EMA_DAYS: int = 50
+
+    # ── Generic indicator defaults (utils/indicator_utils.py) ───────────────
+    RSI_DEFAULT_PERIOD: int = 14
+    ATR_DEFAULT_PERIOD: int = 14
+    VOLUME_SMA_DEFAULT_DAYS: int = 50
+    SWING_DEFAULT_WINDOW: int = 5
+    VOLUME_SPIKE_MIN_ROWS: int = 10          # data-quality check: suspicious volume spike...
+    VOLUME_SPIKE_LOOKBACK: int = 50
+    VOLUME_SPIKE_MULT: float = 25.0          # ...above 25x the prior median
+    HUGE_MOVE_PCT: float = 0.50              # data-quality: a daily move above 50% is suspect
+    PRICE_MATCH_TOLERANCE_PCT: float = 0.02
+    MAX_FORWARD_FILL_DAYS: int = 2
+
+    # ── Costs (portfolio/pnl_calculator.py) ─────────────────────────────────
+    # LEGACY profile: what every published result before 2026-08-08 used
+    COST_LEGACY_BROKERAGE_PER_SIDE: float = 20.0
+    COST_STT_BUY_PCT: float = 0.001
+    COST_STT_SELL_PCT: float = 0.001
+    COST_LEGACY_EXCHANGE_PCT: float = 0.0000335
+    COST_SEBI_PCT: float = 0.000001
+    COST_STAMP_DUTY_PCT: float = 0.00015
+    COST_GST_RATE: float = 0.18
+    COST_SLIPPAGE_PCT: float = 0.001
+    # Real Zerodha CNC delivery (DUST_FLOOR_DECISION.md)
+    COST_CNC_BROKERAGE_PER_SIDE: float = 0.0
+    COST_CNC_EXCHANGE_PCT: float = 0.0000297
+    COST_CNC_DP_CHARGE: float = 13.5         # per scrip per sell day, before GST
+
+    # ── Operations: schedule (IST, crontab "min hour dom mon dow") ──────────
+    SCHEDULE: dict = field(default_factory=lambda: {
+        "universe_snapshot_refresh": "30 5 * * *",
+        "fundamentals_refresh":      "0 6 * * *",
+        "surveillance_refresh":      "0 7 * * *",
+        "corporate_events_refresh":  "30 7 * * *",
+        "auth_login_prompt":         "0 8 * * *",
+        "holdings_reconcile":        "20 8 * * *",
+        "universe_ohlcv_refresh":    "30 8 * * *",
+        "pre_scan_filters":          "45 8 * * *",
+        "strategy_scan":             "0 9 * * *",
+        "momentum_scan":             "5 9 * * *",
+        "breakout_scan":             "7 9 * * *",
+        "mean_reversion_scan":       "8 9 * * *",
+        "regime_check_premarket":    "10 9 * * *",
+        "rank_opportunities":        "15 9 * * *",
+        "gtt_verify":                "20 9 * * *",
+        "gtt_backup":                "* 9-15 * * *",
+        "exit_check":                "*/5 9-15 * * *",
+        "entry_window":              "*/5 9-10 * * *",
+        "regime_intraday":           "*/30 9-15 * * *",
+        "heartbeat":                 "*/30 9-15 * * *",
+        "market_close_cleanup":      "30 15 * * *",
+        "eod_report":                "45 15 * * *",
+        "database_backup":           "30 16 * * *",
+        "weekly_report":             "0 7 * * 1",
+    })
+    SCHEDULER_MISFIRE_GRACE_SECONDS: int = 300
+    # Bot's own pre-market window (login at 08:00). Not NSE's pre-open session,
+    # which is PRE_MARKET_START above.
+    BOT_DAY_START: str = "08:00"
+
+    # ── Operations: broker, network, process ────────────────────────────────
+    NIFTY50_INSTRUMENT_TOKEN: int = 256265   # fallback if the instrument map lacks "NIFTY 50"
+    KITE_MAX_ATTEMPTS: int = 3               # historical-data call attempts
+    KITE_RETRY_BACKOFF_BASE: float = 2.0     # retry delay = base ** attempt seconds
+    KITE_RATE_LIMIT_POLL_SECONDS: float = 0.05
+    ORDER_STATUS_TIMEOUT_SECONDS: int = 30
+    ORDER_STATUS_POLL_SECONDS: int = 2
+    ORDER_FILL_WAIT_SECONDS: int = 120       # market-upgrade sell waits this long for a fill
+    MARGIN_BUFFER_MULT: float = 1.05         # require 5% more cash than the order value
+    GTT_MONITOR_POLL_SECONDS: int = 60
+    GTT_MONITOR_MAX_SELL_ATTEMPTS: int = 3
+    TELEGRAM_TIMEOUT_SECONDS: int = 10
+    NSE_HTTP_TIMEOUT_SECONDS: int = 10       # India VIX fetch
+    SCRAPE_HTTP_TIMEOUT_SECONDS: int = 15    # NSE universe/events/surveillance, Screener.in
+    AUTH_HTTP_TIMEOUT_SECONDS: int = 15
+    HEALTH_CHECK_PORT: int = 8081
+    MAIN_LOOP_SLEEP_SECONDS: int = 60
+    MAIN_LOOP_ERROR_SLEEP_SECONDS: int = 30
+    INACTIVITY_ALERT_DAYS: int = 25          # Zerodha sweeps idle funds after 30 days
+    RECONCILE_RECENT_CLOSE_DAYS: int = 7     # orphan check looks at trades closed this recently
+    FUNDAMENTALS_BATCH_SIZE: int = 20
+    PROGRESS_LOG_EVERY: int = 20             # log fetch progress every N symbols
+    OHLCV_FRESH_TOLERANCE_DAYS: int = 30
+    UNIVERSE_MIN_SYMBOLS: dict = field(default_factory=lambda: {"nifty200": 150, "nifty500": 400})
+    BACKUP_KEEP_DAYS: int = 30
+    LOG_MAX_BYTES: int = 50 * 1024 * 1024    # per rotating log file
+    LOG_BACKUP_COUNT: int = 90               # rotated files kept (~90 days)
+    ACCESS_TOKEN_MAX_AGE_HOURS: int = 20
+    RECENT_TRADES_DEFAULT_DAYS: int = 7
+    TRADE_HISTORY_DEFAULT_DAYS: int = 90
+    TRADE_HISTORY_YEAR_DAYS: int = 365
+    TRADE_HISTORY_MAX_ROWS: int = 500
+    WEEKLY_REPORT_DAYS: int = 7
+
     def validate(self) -> list[str]:
         """Return list of validation errors; empty list = config is valid."""
         errors: list[str] = []

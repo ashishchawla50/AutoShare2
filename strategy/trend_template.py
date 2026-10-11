@@ -14,6 +14,7 @@ from typing import Optional
 
 import pandas as pd
 
+from config.config import config
 from utils.indicator_utils import ema
 
 logger = logging.getLogger("scanner.trend_template")
@@ -47,21 +48,22 @@ def passes_trend_template(daily_ohlcv: pd.DataFrame) -> TrendTemplateResult:
     """
     close = daily_ohlcv["close"]
 
-    if len(close) < 210:
+    if len(close) < config.TT_MIN_HISTORY_DAYS:
         logger.debug(
-            "Insufficient data for trend template: %d days (need 210)", len(close)
+            "Insufficient data for trend template: %d days (need %d)",
+            len(close), config.TT_MIN_HISTORY_DAYS,
         )
         return TrendTemplateResult(passes=False, conditions={}, current_price=0.0)
 
     current = float(close.iloc[-1])
-    low_52w = float(close.tail(252).min())
-    high_52w = float(close.tail(252).max())
+    low_52w = float(close.tail(config.TT_52W_DAYS).min())
+    high_52w = float(close.tail(config.TT_52W_DAYS).max())
 
-    e50 = float(ema(close, 50).iloc[-1])
-    e150 = float(ema(close, 150).iloc[-1])
-    e200 = float(ema(close, 200).iloc[-1])
-    # 20 trading days ≈ 4 calendar weeks
-    e200_20d_ago = float(ema(close, 200).iloc[-20])
+    e50 = float(ema(close, config.TT_EMA_FAST).iloc[-1])
+    e150 = float(ema(close, config.TT_EMA_MID).iloc[-1])
+    e200 = float(ema(close, config.TT_EMA_SLOW).iloc[-1])
+    # TT_EMA_SLOW_RISING_LOOKBACK rows back ≈ 4 calendar weeks
+    e200_20d_ago = float(ema(close, config.TT_EMA_SLOW).iloc[-config.TT_EMA_SLOW_RISING_LOOKBACK])
 
     conditions = {
         "c1_price_above_ema50": current > e50,
@@ -72,9 +74,9 @@ def passes_trend_template(daily_ohlcv: pd.DataFrame) -> TrendTemplateResult:
         # EMA200 must be trending up for at least 4 weeks
         "c6_ema200_trending_up": e200 > e200_20d_ago,
         # Price at least 25% above 52-week low (in an uptrend)
-        "c7_price_25pct_above_52w_low": current >= low_52w * 1.25,
+        "c7_price_25pct_above_52w_low": current >= low_52w * config.TT_MIN_MULT_OF_52W_LOW,
         # Price within 25% of 52-week high (not in deep correction)
-        "c8_price_within_25pct_of_52w_high": current >= high_52w * 0.75,
+        "c8_price_within_25pct_of_52w_high": current >= high_52w * config.TT_MIN_MULT_OF_52W_HIGH,
     }
 
     all_pass = all(conditions.values())
@@ -84,7 +86,7 @@ def passes_trend_template(daily_ohlcv: pd.DataFrame) -> TrendTemplateResult:
 
     if not all_pass:
         failing = [k for k, v in conditions.items() if not v]
-        logger.debug("Trend template failed (%d/8): %s", conditions_met, failing)
+        logger.debug("Trend template failed (%d/%d): %s", conditions_met, len(conditions), failing)
 
     return TrendTemplateResult(
         passes=all_pass,
@@ -108,4 +110,6 @@ def trend_template_score(result: TrendTemplateResult) -> float:
     A stock with all 8 conditions met = 100. Partial credit for near-misses.
     Used only for ranking, not as an entry gate.
     """
-    return (result.conditions_met / 8) * 100
+    if not result.conditions:
+        return 0.0
+    return (result.conditions_met / len(result.conditions)) * 100

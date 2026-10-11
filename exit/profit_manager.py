@@ -33,10 +33,9 @@ class ProfitTier:
     sell_fraction: float    # Fraction of ORIGINAL position to sell (e.g., 0.33)
 
 
+# config.PARTIAL_PROFIT_TIERS; whatever is not sold runs with the trailing stop
 PROFIT_TIERS: list[ProfitTier] = [
-    ProfitTier(profit_pct=0.20, sell_fraction=0.33),
-    ProfitTier(profit_pct=0.30, sell_fraction=0.33),
-    # Remaining 34% runs with trailing stop
+    ProfitTier(profit_pct=p, sell_fraction=f) for p, f in config.PARTIAL_PROFIT_TIERS
 ]
 
 
@@ -95,7 +94,7 @@ def check_technical_breakdown(
     Returns:
         (should_exit: bool, reason: str)
     """
-    if len(daily_ohlcv) < 50:
+    if len(daily_ohlcv) < config.BREAKDOWN_MIN_HISTORY:
         return False, ""
 
     close = daily_ohlcv["close"]
@@ -108,10 +107,10 @@ def check_technical_breakdown(
         return True, f"Close {current_close:.2f} below VCP low {vcp_consolidation_low:.2f} — breakout failed"
 
     # ── Rule 2: Close below 50-day EMA on elevated volume ─────────────────
-    ema50 = float(ema(close, 50).iloc[-1])
-    avg_vol = float(volume_sma(volume, 50).iloc[-1])
+    ema50 = float(ema(close, config.BREAKDOWN_EMA_DAYS).iloc[-1])
+    avg_vol = float(volume_sma(volume, config.BREAKDOWN_VOLUME_AVG_DAYS).iloc[-1])
 
-    if current_close < ema50 and current_vol > avg_vol * 1.5:
+    if current_close < ema50 and current_vol > avg_vol * config.BREAKDOWN_VOLUME_MULT:
         return True, (
             f"Close {current_close:.2f} below 50-day EMA {ema50:.2f} "
             f"on {current_vol/avg_vol:.1f}x volume"
@@ -121,7 +120,7 @@ def check_technical_breakdown(
     if entry_price > 0:
         profit_pct = (current_close - entry_price) / entry_price
         if profit_pct > 0:  # only trigger if we've been profitable
-            ema10_series = ema(close, 10)
+            ema10_series = ema(close, config.REVIEW_EMA_DAYS)
             if len(ema10_series) >= 2:
                 today_below = float(close.iloc[-1]) < float(ema10_series.iloc[-1])
                 yesterday_below = float(close.iloc[-2]) < float(ema10_series.iloc[-2])

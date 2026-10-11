@@ -65,7 +65,7 @@ def check_mean_reversion(symbol: str, df: pd.DataFrame) -> MeanReversionResult:
         rsi2=0.0, ema200=0.0, consecutive_down=0, score=0.0,
     )
 
-    min_bars = config.MR_EMA_TREND + 10
+    min_bars = config.MR_EMA_TREND + config.MR_MIN_EXTRA_BARS
     if len(df) < min_bars:
         return _fail(f"Insufficient data ({len(df)} bars, need {min_bars})")
 
@@ -97,11 +97,14 @@ def check_mean_reversion(symbol: str, df: pd.DataFrame) -> MeanReversionResult:
 
     # Score: lower RSI = deeper oversold = stronger signal
     rsi_score = max(0.0, (config.MR_RSI_ENTRY - rsi2_val) / config.MR_RSI_ENTRY * 100)
-    consec_score = min(100.0, consecutive_down / 5 * 100)
+    consec_score = min(100.0, consecutive_down / config.MR_SCORE_CONSEC_FULL * 100)
     # Stocks close to 200-EMA are more stretched and riskier; prefer moderate distance
     pct_above_ema200 = (current_price / e200 - 1) * 100
-    trend_score = max(0.0, 50.0 - abs(pct_above_ema200 - 10.0) * 2)
-    score = round(rsi_score * 0.5 + consec_score * 0.3 + trend_score * 0.2, 2)
+    trend_score = max(0.0, config.MR_SCORE_TREND_BASE
+                      - abs(pct_above_ema200 - config.MR_SCORE_TREND_CENTER_PCT)
+                      * config.MR_SCORE_TREND_SLOPE)
+    w_rsi, w_consec, w_trend = config.MR_SCORE_WEIGHTS
+    score = round(rsi_score * w_rsi + consec_score * w_consec + trend_score * w_trend, 2)
 
     logger.debug(
         "MR pass: %s price=%.2f EMA200=%.2f EMA5=%.2f RSI2=%.1f down=%d score=%.1f",
@@ -144,7 +147,7 @@ def should_exit_mean_reversion(
 def _count_consecutive_down(close: pd.Series) -> int:
     """Count consecutive down closes ending on today's bar (max 10)."""
     count = 0
-    for i in range(1, min(11, len(close))):
+    for i in range(1, min(config.MR_CONSEC_DOWN_LOOKBACK + 1, len(close))):
         if float(close.iloc[-i]) < float(close.iloc[-(i + 1)]):
             count += 1
         else:

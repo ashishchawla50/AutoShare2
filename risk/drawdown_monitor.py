@@ -83,8 +83,8 @@ class DrawdownMonitor:
         0.0 = no new trades (drawdown > 15%, handled by check_all_limits)
         """
         dd = self._pm.get_drawdown_pct()
-        if dd >= 0.10:
-            return 0.5
+        if dd >= config.DD_REDUCE_SIZE_AT:
+            return config.DD_REDUCED_SIZE_MULT
         return 1.0
 
     def record_trade_result(self, pnl: float) -> None:
@@ -124,9 +124,10 @@ class DrawdownMonitor:
         if dd >= config.MAX_DRAWDOWN_PCT:
             self._trigger_emergency_halt(dd)
             return False, f"Emergency halt: {dd:.1%} drawdown from peak exceeds {config.MAX_DRAWDOWN_PCT:.0%} limit"
-        if dd >= 0.15:
-            return False, f"Drawdown halt: {dd:.1%} from peak exceeds 15% — no new entries until recovery below 12%"
-        if dd >= 0.10:
+        if dd >= config.DD_HALT_ENTRIES_AT:
+            return False, (f"Drawdown halt: {dd:.1%} from peak exceeds "
+                           f"{config.DD_HALT_ENTRIES_AT:.0%} — no new entries until it recovers below that")
+        if dd >= config.DD_REDUCE_SIZE_AT:
             logger.warning("Drawdown caution: %.1f%% from peak — position sizes halved", dd * 100)
         return True, ""
 
@@ -139,14 +140,14 @@ class DrawdownMonitor:
 
     def _check_weekly_loss(self) -> tuple[bool, str]:
         """Check rolling-week realised loss against the weekly limit."""
-        week_pnl_pct = self._get_rolling_pnl_pct(days=7)
+        week_pnl_pct = self._get_rolling_pnl_pct(days=config.WEEKLY_LOSS_WINDOW_DAYS)
         if week_pnl_pct <= -config.WEEKLY_LOSS_LIMIT_PCT:
             return False, f"Weekly loss limit hit: {week_pnl_pct:.2%} (limit {config.WEEKLY_LOSS_LIMIT_PCT:.0%})"
         return True, ""
 
     def _check_monthly_loss(self) -> tuple[bool, str]:
         """Check rolling-month realised loss against the monthly limit."""
-        month_pnl_pct = self._get_rolling_pnl_pct(days=30)
+        month_pnl_pct = self._get_rolling_pnl_pct(days=config.MONTHLY_LOSS_WINDOW_DAYS)
         if month_pnl_pct <= -config.MONTHLY_LOSS_LIMIT_PCT:
             return False, f"Monthly loss limit hit: {month_pnl_pct:.2%} (limit {config.MONTHLY_LOSS_LIMIT_PCT:.0%})"
         return True, ""

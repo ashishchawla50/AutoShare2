@@ -18,6 +18,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from config.config import config
+
 logger = logging.getLogger("trading.pnl")
 
 
@@ -30,14 +32,14 @@ class TradeCosts:
     real CNC delivery cost — see CNC_DELIVERY_COSTS below — so they are kept
     as the default purely so no historical number silently changes.
     """
-    brokerage_per_side: float = 20.0        # ₹20 per order (Zerodha INTRADAY fee)
-    stt_buy_pct: float = 0.001              # 0.1% on buy
-    stt_sell_pct: float = 0.001             # 0.1% on sell
-    exchange_charge_pct: float = 0.0000335  # NSE per side (0.00335%)
-    sebi_charge_pct: float = 0.000001       # 0.0001% per side
-    stamp_duty_pct: float = 0.00015         # 0.015% on buy only
-    gst_rate: float = 0.18                  # 18% on brokerage + exchange
-    slippage_pct: float = 0.001             # 0.1% per side (market impact)
+    brokerage_per_side: float = config.COST_LEGACY_BROKERAGE_PER_SIDE   # ₹ per order (intraday fee)
+    stt_buy_pct: float = config.COST_STT_BUY_PCT
+    stt_sell_pct: float = config.COST_STT_SELL_PCT
+    exchange_charge_pct: float = config.COST_LEGACY_EXCHANGE_PCT         # NSE per side
+    sebi_charge_pct: float = config.COST_SEBI_PCT                        # per side
+    stamp_duty_pct: float = config.COST_STAMP_DUTY_PCT                   # buy only
+    gst_rate: float = config.COST_GST_RATE                               # on brokerage + exchange
+    slippage_pct: float = config.COST_SLIPPAGE_PCT                       # per side (market impact)
     dp_charge_per_sell: float = 0.0         # ₹ per scrip per sell day (CDSL)
 
 
@@ -51,9 +53,9 @@ class TradeCosts:
 # 0.24%. Slippage is left at 0.1%/side — a market-impact assumption, not a
 # fee. See DUST_FLOOR_DECISION.md for the full derivation.
 CNC_DELIVERY_COSTS = TradeCosts(
-    brokerage_per_side=0.0,
-    exchange_charge_pct=0.0000297,
-    dp_charge_per_sell=13.5 * 1.18,
+    brokerage_per_side=config.COST_CNC_BROKERAGE_PER_SIDE,
+    exchange_charge_pct=config.COST_CNC_EXCHANGE_PCT,
+    dp_charge_per_sell=config.COST_CNC_DP_CHARGE * (1 + config.COST_GST_RATE),
 )
 
 _DEFAULT_COSTS = TradeCosts()

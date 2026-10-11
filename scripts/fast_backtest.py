@@ -31,13 +31,15 @@ from backtest.fast.data import Universe, load_market_data
 from backtest.fast.engine import FastBacktestEngine
 from backtest.fast.signals import load_signals
 from backtest.performance_analyzer import print_report
+from config.config import config
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Fast vcp_v2 backtest (reconstructed dataset)")
-    p.add_argument("--start", default="2021-09-01", help="YYYY-MM-DD (default 2021-09-01)")
+    p.add_argument("--start", default=config.BACKTEST_DATASET_FLOOR,
+                   help=f"YYYY-MM-DD (default {config.BACKTEST_DATASET_FLOOR})")
     p.add_argument("--end", default="2026-08-10", help="YYYY-MM-DD (default 2026-08-10, dataset end)")
-    p.add_argument("--capital", type=float, default=50_000.0)
+    p.add_argument("--capital", type=float, default=config.STARTING_CAPITAL)
     p.add_argument("--cost-model", choices=["cnc", "legacy"], default="cnc")
     p.add_argument("--no-dd-halt", action="store_true",
                    help="disable the absorbing 20%% drawdown halt to measure the underlying edge")

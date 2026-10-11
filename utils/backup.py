@@ -12,21 +12,19 @@ import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from config.config import config
 from utils.time_utils import IST, now_ist
 
 logger = logging.getLogger("data")
 
 _DB_FILES = [
-    "data/market_data.db",
-    "data/fundamentals.db",
-    "data/corporate_events.db",
-    "data/surveillance.db",
-    "data/portfolio_state.db",
-    "data/regime_history.db",
+    str(Path(config.DB_PATH) / name)
+    for name in ("market_data.db", "fundamentals.db", config.CORPORATE_EVENTS_DB,
+                 "surveillance.db", "portfolio_state.db", "regime_history.db")
 ]
 
-_BACKUP_DIR = Path("data/backups")
-_KEEP_DAYS = 30
+_BACKUP_DIR = Path(config.DATA_BACKUP_PATH)
+_KEEP_DAYS = config.BACKUP_KEEP_DAYS
 
 
 def backup_databases() -> list[str]:

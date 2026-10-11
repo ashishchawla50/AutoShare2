@@ -20,7 +20,7 @@ for the portfolio loop of these strategies.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 import numpy as np
@@ -102,8 +102,8 @@ class FastRuleEngine(FastBacktestEngine):
         if self.strategy in ("momentum_v3", "momentum_v4"):
             # Nifty return over the RS lookback, using closes dated before sim_date
             lb = config.MOMENTUM3_RS_LOOKBACK
-            nifty = load_nifty_ohlcv(trading_days[0].replace(year=trading_days[0].year - 2),
-                                     self.end_date)
+            nifty = load_nifty_ohlcv(
+                trading_days[0] - timedelta(days=config.BACKTEST_WARMUP_CALENDAR_DAYS), self.end_date)
             nd = nifty.index.values.astype("datetime64[D]")
             nc = nifty["close"].astype(float).to_numpy()
             k = np.searchsorted(nd, np.array(trading_days, dtype="datetime64[D]"), side="left")
@@ -147,7 +147,7 @@ class FastRuleEngine(FastBacktestEngine):
         v = getattr(rs, _family(strategy))[rows].copy()
         if strategy == "mean_reversion":
             # check_mean_reversion needs MR_EMA_TREND + 10 bars in prev_day_df
-            v[(n - 1) < config.MR_EMA_TREND + 10] = 0
+            v[(n - 1) < config.MR_EMA_TREND + config.MR_MIN_EXTRA_BARS] = 0
         return v
 
     def _open_count(self, strategy: str) -> int:
@@ -166,7 +166,7 @@ class FastRuleEngine(FastBacktestEngine):
         if len(U) == 0:
             return
         n = self._n[ti, U].astype(np.int64)
-        valid = n >= 210
+        valid = n >= config.TT_MIN_HISTORY_DAYS
         if self._open:
             valid &= ~np.isin(U, np.fromiter(self._open, np.int64))
         prev = np.where(valid, self._lo[U] + n - 2, 0)        # scan candle (prev_day_df[-1])
@@ -267,7 +267,7 @@ class FastRuleEngine(FastBacktestEngine):
         prev_close = float(md.close[g])
         if prev_close > 0:
             gap = (entry_price - prev_close) / prev_close
-            if gap > config.MAX_GAP_UP_PCT or gap < -0.03:
+            if gap > config.MAX_GAP_UP_PCT or gap < -config.MAX_GAP_DOWN_PCT:
                 st["gap_filtered"] += 1
                 return False
         if available_cash < config.MIN_POSITION_VALUE * regime_mult:

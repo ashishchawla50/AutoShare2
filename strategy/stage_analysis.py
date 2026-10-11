@@ -50,7 +50,7 @@ def detect_stage(daily_ohlcv: pd.DataFrame) -> StageResult:
     Returns:
         StageResult with stage classification and supporting metrics.
     """
-    if len(daily_ohlcv) < 200:
+    if len(daily_ohlcv) < config.STAGE_MIN_DAILY_ROWS:
         logger.debug("Insufficient data for stage analysis (%d rows)", len(daily_ohlcv))
         return StageResult(
             stage=Stage.BASING,
@@ -65,7 +65,7 @@ def detect_stage(daily_ohlcv: pd.DataFrame) -> StageResult:
     weekly = daily_to_weekly(daily_ohlcv)
     n_weeks = len(weekly)
 
-    if n_weeks < 40:
+    if n_weeks < config.STAGE_MIN_WEEKS:
         return StageResult(
             stage=Stage.BASING,
             current_price=float(daily_ohlcv["close"].iloc[-1]),
@@ -79,16 +79,17 @@ def detect_stage(daily_ohlcv: pd.DataFrame) -> StageResult:
     ma30 = sma(weekly["close"], config.WEINSTEIN_MA_PERIOD_WEEKS)
     current_price = float(weekly["close"].iloc[-1])
     current_ma = float(ma30.iloc[-1])
-    ma_4w_ago = float(ma30.iloc[-4])
-    ma_8w_ago = float(ma30.iloc[-8])
+    near_wk, far_wk = config.STAGE_MA_SLOPE_WEEKS
+    ma_4w_ago = float(ma30.iloc[-near_wk])
+    ma_8w_ago = float(ma30.iloc[-far_wk])
 
     price_above_ma = current_price > current_ma
     # MA is rising if current > 4 weeks ago > 8 weeks ago (consistent uptrend)
     ma_rising = current_ma > ma_4w_ago > ma_8w_ago
-    price_trend_up = float(weekly["close"].iloc[-1]) > float(weekly["close"].iloc[-4])
+    price_trend_up = float(weekly["close"].iloc[-1]) > float(weekly["close"].iloc[-near_wk])
 
     # Volume confirmation: advancing weeks should have higher avg volume than declining weeks
-    last_8w = weekly.tail(8)
+    last_8w = weekly.tail(config.STAGE_VOLUME_WEEKS)
     up_weeks = last_8w[last_8w["close"] >= last_8w["open"]]
     down_weeks = last_8w[last_8w["close"] < last_8w["open"]]
 

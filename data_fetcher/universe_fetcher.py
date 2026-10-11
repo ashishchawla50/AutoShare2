@@ -89,7 +89,7 @@ def _get_nse_session() -> requests.Session:
     session = requests.Session()
     session.headers.update(_HEADERS)
     try:
-        session.get("https://www.nseindia.com/", timeout=15)
+        session.get("https://www.nseindia.com/", timeout=config.SCRAPE_HTTP_TIMEOUT_SECONDS)
     except requests.RequestException as exc:
         logger.warning("Could not establish NSE session: %s", exc)
     return session
@@ -115,7 +115,7 @@ def fetch_nifty200_symbols(dry_run: bool = False) -> list[str]:
 
     # ── Attempt 1: NSE archives CSV (no authentication required) ─────────────
     try:
-        resp = requests.get(_NSE_NIFTY200_CSV, headers=_HEADERS, timeout=15)
+        resp = requests.get(_NSE_NIFTY200_CSV, headers=_HEADERS, timeout=config.SCRAPE_HTTP_TIMEOUT_SECONDS)
         resp.raise_for_status()
         lines = resp.text.strip().splitlines()
         symbols = []
@@ -125,7 +125,7 @@ def fetch_nifty200_symbols(dry_run: bool = False) -> list[str]:
                 sym = parts[2].strip().strip('"')
                 if sym:
                     symbols.append(sym)
-        if len(symbols) >= 150:
+        if len(symbols) >= config.UNIVERSE_MIN_SYMBOLS["nifty200"]:
             logger.info("Fetched %d Nifty 200 symbols from NSE CSV", len(symbols))
             return symbols
         logger.warning("NSE CSV returned only %d symbols — trying JSON API", len(symbols))
@@ -136,11 +136,11 @@ def fetch_nifty200_symbols(dry_run: bool = False) -> list[str]:
     session = _get_nse_session()
     time.sleep(config.NSE_SCRAPE_DELAY_SECONDS)
     try:
-        resp = session.get(_NSE_NIFTY200_URL, timeout=15)
+        resp = session.get(_NSE_NIFTY200_URL, timeout=config.SCRAPE_HTTP_TIMEOUT_SECONDS)
         resp.raise_for_status()
         data = resp.json()
         symbols = [item["symbol"] for item in data.get("data", []) if "symbol" in item]
-        if len(symbols) >= 150:
+        if len(symbols) >= config.UNIVERSE_MIN_SYMBOLS["nifty200"]:
             logger.info("Fetched %d Nifty 200 symbols from NSE API", len(symbols))
             return symbols
         logger.warning("NSE API returned only %d symbols — using fallback", len(symbols))
@@ -161,7 +161,7 @@ def fetch_nifty500_symbols(dry_run: bool = False) -> list[str]:
         return list(_FALLBACK_SYMBOLS)
 
     try:
-        resp = requests.get(_NSE_NIFTY500_CSV, headers=_HEADERS, timeout=15)
+        resp = requests.get(_NSE_NIFTY500_CSV, headers=_HEADERS, timeout=config.SCRAPE_HTTP_TIMEOUT_SECONDS)
         resp.raise_for_status()
         lines = resp.text.strip().splitlines()
         symbols = []
@@ -171,7 +171,7 @@ def fetch_nifty500_symbols(dry_run: bool = False) -> list[str]:
                 sym = parts[2].strip().strip('"')
                 if sym:
                     symbols.append(sym)
-        if len(symbols) >= 400:
+        if len(symbols) >= config.UNIVERSE_MIN_SYMBOLS["nifty500"]:
             logger.info("Fetched %d Nifty 500 symbols from NSE CSV", len(symbols))
             return symbols
         logger.warning("NSE CSV returned only %d symbols — trying JSON API", len(symbols))
@@ -181,11 +181,11 @@ def fetch_nifty500_symbols(dry_run: bool = False) -> list[str]:
     session = _get_nse_session()
     time.sleep(config.NSE_SCRAPE_DELAY_SECONDS)
     try:
-        resp = session.get(_NSE_NIFTY500_URL, timeout=15)
+        resp = session.get(_NSE_NIFTY500_URL, timeout=config.SCRAPE_HTTP_TIMEOUT_SECONDS)
         resp.raise_for_status()
         data = resp.json()
         symbols = [item["symbol"] for item in data.get("data", []) if "symbol" in item]
-        if len(symbols) >= 400:
+        if len(symbols) >= config.UNIVERSE_MIN_SYMBOLS["nifty500"]:
             logger.info("Fetched %d Nifty 500 symbols from NSE API", len(symbols))
             return symbols
         logger.warning("NSE API returned only %d symbols — falling back to Nifty 200", len(symbols))

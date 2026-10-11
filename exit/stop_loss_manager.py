@@ -1,15 +1,12 @@
 """Hard stop and trailing stop management.
 
-Hard stop: 7% below entry — placed as GTT on Zerodha. Non-negotiable.
+Hard stop: config.HARD_STOP_PCT below entry — placed as GTT on Zerodha. Non-negotiable.
 Trailing stop: Ratchets up as profit increases. Never moves down.
 
-Trailing rules:
-  Profit ≥ 10% → move stop to breakeven
-  Profit ≥ 15% → move stop to +5%
-  Profit ≥ 20% → move stop to +10%
-  Profit ≥ 30% → move stop to +20%
+Trailing rules: config.TRAILING_STOP_RULES (today: +10% → breakeven, +15% → +5%,
++20% → +10%, +30% → +20%).
 
-Dynamic floor: max(rule-based stop, 10-day EMA × 0.97)
+Dynamic floor: max(rule-based stop, EMA(STOP_EMA_FLOOR_DAYS) × STOP_EMA_FLOOR_MULT)
 The stop is ALWAYS the higher of the two.
 
 CRITICAL: Never move the stop further from entry. Log any attempted violation
@@ -36,12 +33,9 @@ class TrailingRule:
     trail_to: float      # Stop moves to this fraction above entry (e.g., 0.0 = breakeven, 0.05 = +5%)
 
 
-# Trailing rules from spec — ordered from tightest to loosest profit threshold
+# Trailing rules, ordered from lowest to highest profit threshold (config.TRAILING_STOP_RULES)
 TRAILING_RULES: list[TrailingRule] = [
-    TrailingRule(profit_pct=0.10, trail_to=0.0),    # 10% profit → stop to breakeven
-    TrailingRule(profit_pct=0.15, trail_to=0.05),   # 15% → stop to +5%
-    TrailingRule(profit_pct=0.20, trail_to=0.10),   # 20% → stop to +10%
-    TrailingRule(profit_pct=0.30, trail_to=0.20),   # 30% → stop to +20%
+    TrailingRule(profit_pct=p, trail_to=t) for p, t in config.TRAILING_STOP_RULES
 ]
 
 
@@ -102,12 +96,13 @@ def calculate_trailing_stop(
     return rule_based_stop, reason
 
 
-def _get_ema_floor(daily_ohlcv: pd.DataFrame, period: int = 10) -> float:
-    """Return 10-day EMA × 0.97 as the dynamic stop floor."""
+def _get_ema_floor(daily_ohlcv: pd.DataFrame, period: int = None) -> float:
+    """Return EMA(STOP_EMA_FLOOR_DAYS) × STOP_EMA_FLOOR_MULT as the dynamic stop floor."""
+    period = period or config.STOP_EMA_FLOOR_DAYS
     if len(daily_ohlcv) < period:
         return 0.0
     ema_val = float(ema(daily_ohlcv["close"], period).iloc[-1])
-    return ema_val * 0.97
+    return ema_val * config.STOP_EMA_FLOOR_MULT
 
 
 def should_exit_on_stop(current_price: float, stop_price: float) -> bool:
@@ -121,7 +116,7 @@ def calculate_hard_stop(entry_price: float) -> float:
     Rounded to nearest 0.05 (NSE tick size).
     """
     raw = entry_price * (1 - config.HARD_STOP_PCT)
-    return round(raw / 0.05) * 0.05
+    return round(raw / config.PRICE_TICK) * config.PRICE_TICK
 
 
 def validate_stop_not_widened(

@@ -33,7 +33,7 @@ _HEADERS = {
 # Cached last known VIX (in-memory only — re-fetched every 30 min during market hours)
 _last_known_vix: Optional[float] = None
 _last_fetch_time: float = 0.0
-_VIX_CACHE_SECONDS = 5 * 60  # 5 minutes
+_VIX_CACHE_SECONDS = config.VIX_CACHE_SECONDS
 
 
 def get_india_vix(force_refresh: bool = False) -> Optional[float]:
@@ -81,8 +81,8 @@ def _fetch_vix_from_nse() -> Optional[float]:
     session = requests.Session()
     session.headers.update(_HEADERS)
     try:
-        session.get("https://www.nseindia.com/", timeout=10)
-        resp = session.get(_NSE_VIX_URL, timeout=10)
+        session.get("https://www.nseindia.com/", timeout=config.NSE_HTTP_TIMEOUT_SECONDS)
+        resp = session.get(_NSE_VIX_URL, timeout=config.NSE_HTTP_TIMEOUT_SECONDS)
         resp.raise_for_status()
         data = resp.json()
         # NSE returns index data as list; VIX is in "data" key
@@ -132,7 +132,7 @@ def position_size_multiplier(vix: Optional[float]) -> float:
     if vix is None or vix < config.VIX_CAUTION_LEVEL:
         return 1.0
     if vix < config.VIX_REDUCE_LEVEL:
-        return 0.5   # Cautious mode — half size
+        return config.VIX_CAUTION_SIZE_MULT   # Cautious mode
     if vix < config.VIX_HALT_LEVEL:
-        return 0.5   # High volatility — half size
+        return config.VIX_HIGH_SIZE_MULT      # High volatility
     return 0.0       # Extreme — no new positions

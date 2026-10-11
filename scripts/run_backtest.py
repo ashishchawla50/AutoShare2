@@ -47,7 +47,7 @@ from config.config import config
 
 STRATEGIES = ("vcp_v2",) + RULE_STRATEGIES
 WINDOWS = {"1m": 1, "3m": 3, "6m": 6, "1y": 12, "2y": 24, "3y": 36, "5y": 60}
-DATASET_FLOOR = date(2021, 9, 1)     # earliest start with a warmed-up regime benchmark
+DATASET_FLOOR = date.fromisoformat(config.BACKTEST_DATASET_FLOOR)   # warmed-up regime benchmark
 
 
 def _resolve_dates(args: argparse.Namespace, data_end: date) -> tuple[date, date]:
@@ -103,7 +103,7 @@ def _speed(engine) -> str:
     pnl = sum(x["realised_pnl"] for x in t)
     cal = sorted(engine._equity_curve)
     idle = sum(not any(x["entry_date"] <= d < x["exit_date"] for x in t) for d in cal) / max(1, len(cal))
-    return (f"Speed of profit (thumb rule): {pnl / rupee_days * 30 * 100:+.2f}% per 30 days invested | "
+    return (f"Speed of profit (thumb rule): {pnl / rupee_days * config.SPEED_WINDOW_DAYS * 100:+.2f}% per {config.SPEED_WINDOW_DAYS} days invested | "
             f"avg {sum(days) / len(days):.1f} calendar days per trade | no position on {idle:.0%} of days")
 
 
@@ -114,7 +114,7 @@ def main() -> None:
                    help="period ending on the dataset's last date (default: full history)")
     p.add_argument("--start", help="YYYY-MM-DD, overrides --window")
     p.add_argument("--end", help="YYYY-MM-DD (default: dataset's last date)")
-    p.add_argument("--capital", type=float, default=50_000.0)
+    p.add_argument("--capital", type=float, default=config.STARTING_CAPITAL)
     p.add_argument("--ignore-regime", action="store_true",
                    help="trade every day at full size: BEAR no longer blocks, CAUTIOUS no longer halves")
     p.add_argument("--no-dd-halt", action="store_true",

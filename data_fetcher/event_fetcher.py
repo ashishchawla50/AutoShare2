@@ -41,14 +41,14 @@ def _nse_session() -> requests.Session:
     session = requests.Session()
     session.headers.update(_HEADERS)
     try:
-        session.get("https://www.nseindia.com/", timeout=15)
+        session.get("https://www.nseindia.com/", timeout=config.SCRAPE_HTTP_TIMEOUT_SECONDS)
         time.sleep(config.NSE_SCRAPE_DELAY_SECONDS)
     except requests.RequestException:
         pass
     return session
 
 
-def fetch_corporate_events(days_ahead: int = 10) -> list[dict]:
+def fetch_corporate_events(days_ahead: int = None) -> list[dict]:
     """Fetch corporate events from NSE for the next N days.
 
     Args:
@@ -58,6 +58,8 @@ def fetch_corporate_events(days_ahead: int = 10) -> list[dict]:
         List of event dicts with keys: symbol, event_type, ex_date, record_date, details.
     """
     today = date.today()
+    if days_ahead is None:
+        days_ahead = config.EVENTS_FETCH_DAYS_AHEAD
     end_date = today + timedelta(days=days_ahead)
     url = _CORP_ACTIONS_URL.format(
         from_date=today.strftime("%d-%m-%Y"),
@@ -68,7 +70,7 @@ def fetch_corporate_events(days_ahead: int = 10) -> list[dict]:
     events: list[dict] = []
 
     try:
-        resp = session.get(url, timeout=15)
+        resp = session.get(url, timeout=config.SCRAPE_HTTP_TIMEOUT_SECONDS)
         resp.raise_for_status()
         data = resp.json()
 
@@ -106,7 +108,7 @@ def save_events(events: list[dict]) -> None:
     """Persist corporate events to the database."""
     if not events:
         return
-    db_path = Path(config.DB_PATH) / "corporate_events.db"
+    db_path = Path(config.DB_PATH) / config.CORPORATE_EVENTS_DB
     engine = create_engine(f"sqlite:///{db_path}")
     now = datetime.now()
 
@@ -134,8 +136,8 @@ def save_events(events: list[dict]) -> None:
 def has_upcoming_event(
     symbol: str,
     check_date: Optional[date] = None,
-    results_buffer_days: int = 3,
-    other_event_buffer_days: int = 7,
+    results_buffer_days: int = None,
+    other_event_buffer_days: int = None,
 ) -> tuple[bool, str]:
     """Check if a symbol has a corporate event within the buffer window.
 
@@ -149,7 +151,11 @@ def has_upcoming_event(
         (has_event: bool, reason: str) — reason is empty string if no event.
     """
     ref_date = check_date or date.today()
-    db_path = Path(config.DB_PATH) / "corporate_events.db"
+    if results_buffer_days is None:
+        results_buffer_days = config.RESULTS_BUFFER_DAYS
+    if other_event_buffer_days is None:
+        other_event_buffer_days = config.OTHER_EVENT_BUFFER_DAYS
+    db_path = Path(config.DB_PATH) / config.CORPORATE_EVENTS_DB
     if not db_path.exists():
         return False, ""
 

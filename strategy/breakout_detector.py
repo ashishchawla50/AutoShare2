@@ -97,8 +97,8 @@ def is_valid_breakout(
             f"volume {vol_mult:.1f}x < {config.MIN_BREAKOUT_VOLUME_MULTIPLIER}x avg",
         ),
         "healthy_range": (
-            day_range / l > 0.005,
-            f"intraday range {day_range/l:.2%} < 0.5%",
+            day_range / l > config.PIVOT_BREAKOUT_MIN_DAY_RANGE_PCT,
+            f"intraday range {day_range/l:.2%} < {config.PIVOT_BREAKOUT_MIN_DAY_RANGE_PCT:.1%}",
         ),
         "not_extended": (
             c <= pivot_price * (1 + config.MAX_ENTRY_EXTENSION_PCT),
@@ -162,14 +162,14 @@ def evaluate_gap(
             f"past pivot {pivot_price:.2f}"
         )
 
-    if gap_pct < -0.03:
+    if gap_pct < -config.MAX_GAP_DOWN_PCT:
         return GapDecision.SKIP, f"Gap-down {gap_pct:.1%} on breakout stock — setup failed"
 
     return GapDecision.PROCEED, ""
 
 
 def get_avg_volume_50d(daily_ohlcv: pd.DataFrame) -> float:
-    """Return the 50-day simple moving average of volume."""
-    if len(daily_ohlcv) < 50:
+    """Return the PIVOT_BREAKOUT_VOLUME_AVG_DAYS simple moving average of volume."""
+    if len(daily_ohlcv) < config.PIVOT_BREAKOUT_VOLUME_AVG_DAYS:
         return float(daily_ohlcv["volume"].mean())
-    return float(volume_sma(daily_ohlcv["volume"], 50).iloc[-1])
+    return float(volume_sma(daily_ohlcv["volume"], config.PIVOT_BREAKOUT_VOLUME_AVG_DAYS).iloc[-1])

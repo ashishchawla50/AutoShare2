@@ -20,7 +20,7 @@ from backtest.data_loader import load_nifty_ohlcv
 from backtest.fast.data import MarketData
 from config.config import config
 
-_SEGMENTS = ((21, 84, 0.4), (84, 147, 0.2), (147, 210, 0.2), (210, 252, 0.2))
+_SEGMENTS = config.RS_SEGMENTS
 
 
 def rs_raw(md: MarketData) -> np.ndarray:
@@ -35,7 +35,7 @@ def rs_raw(md: MarketData) -> np.ndarray:
         a = np.where(ok, np.arange(N) - start, 0)
         b = np.where(ok, np.arange(N) - end, 0)
         out += w * np.where(ok, c[a] / c[b] - 1, 0.0)
-    out[m < 252] = np.nan
+    out[m < config.RS_MIN_HISTORY_DAYS] = np.nan
     return out
 
 
@@ -46,11 +46,12 @@ class FeatureBook:
         self.e = engine
         md = engine._md
         self.rs = rs_raw(md)
-        nifty = load_nifty_ohlcv(engine.start_date - timedelta(days=730), engine.end_date)
+        nifty = load_nifty_ohlcv(engine.start_date - timedelta(days=config.BACKTEST_WARMUP_CALENDAR_DAYS),
+                                 engine.end_date)
         self.n_days = nifty.index.values.astype("datetime64[D]").astype(np.int64)
         nc = nifty["close"].astype(float)
         self.n_close = nc.to_numpy()
-        self.n_ema50 = nc.ewm(span=50, adjust=False).mean().to_numpy()
+        self.n_ema50 = nc.ewm(span=config.FEATURE_NIFTY_EMA_DAYS, adjust=False).mean().to_numpy()
 
     def _nifty_idx(self, day: int) -> int:
         return int(np.searchsorted(self.n_days, day, side="right")) - 1
@@ -67,7 +68,7 @@ class FeatureBook:
             return np.nan                              # live: < 252 rows → no RS score
         less = np.sum(vals < v)
         eq = np.sum(vals == v)
-        return (less + (eq + 1) / 2) / len(vals) * 99
+        return (less + (eq + 1) / 2) / len(vals) * config.RS_PERCENTILE_SCALE
 
     def features(self, slot: int, p_row: int, ti: int, pend: tuple) -> dict:
         e, md, sig = self.e, self.e._md, self.e._sig
@@ -75,12 +76,13 @@ class FeatureBook:
         a = int(e._a[slot])
         c, o_next = float(md.close[g]), float(md.open[g + 1])
         k = self._nifty_idx(int(md.dates[g]))
-        lo_tr = max(a + 1, g - 13)
+        lo_tr = max(a + 1, g - (config.FEATURE_ATR_DAYS - 1))
         tr = np.maximum.reduce([md.high[lo_tr:g + 1] - md.low[lo_tr:g + 1],
                                 np.abs(md.high[lo_tr:g + 1] - md.close[lo_tr - 1:g]),
                                 np.abs(md.low[lo_tr:g + 1] - md.close[lo_tr - 1:g])])
-        hi52 = float(md.high[max(a, g - 251):g + 1].max())
-        k63 = self._nifty_idx(int(md.dates[max(a, g - 63)]))
+        hi52 = float(md.high[max(a, g - (config.TT_52W_DAYS - 1)):g + 1].max())
+        rel = config.FEATURE_REL_STRENGTH_DAYS
+        k63 = self._nifty_idx(int(md.dates[max(a, g - rel)]))
         watch_start = pend[2] - timedelta(days=config.VCP2_PIVOT_WATCH_DAYS)
         return {
             "rs_pct": self.rs_percentile(ti, slot, g),
@@ -95,11 +97,11 @@ class FeatureBook:
             "from_52w_high": c / hi52 - 1,
             "close_vs_ema50": c / float(sig.ema50[g]) - 1,
             "watch_days": (e._sim_date - watch_start).days,
-            "rel_63": (c / float(md.close[max(a, g - 63)]) - 1) - (self.n_close[k] / self.n_close[k63] - 1),
+            "rel_63": (c / float(md.close[max(a, g - rel)]) - 1) - (self.n_close[k] / self.n_close[k63] - 1),
         }
 
 
-def rs_filter(min_pct: float = 70.0):
+def rs_filter(min_pct: float = None):
     """Entry filter for test A2: drop breakouts below the RS percentile (live's removed rule,
     passes_rs_filter). A stock with no RS score (< 252 rows) fails, as it is absent from live's
     rs_scores and defaults to 0 there."""
@@ -109,5 +111,6 @@ def rs_filter(min_pct: float = 70.0):
         if "fb" not in book:
             book["fb"] = FeatureBook(engine)
         pct = book["fb"].rs_percentile(ti, slot, p_row)
-        return not np.isnan(pct) and pct >= min_pct
+        floor = config.MIN_RS_PERCENTILE if min_pct is None else min_pct
+        return not np.isnan(pct) and pct >= floor
     return f

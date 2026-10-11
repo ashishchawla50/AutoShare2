@@ -21,7 +21,7 @@ from config.config import config
 
 logger = logging.getLogger("data")
 
-_TOKEN_FILE = Path("data/.access_token.enc")
+_TOKEN_FILE = Path(config.DB_PATH) / ".access_token.enc"
 
 
 def _get_fernet() -> Fernet:
@@ -90,7 +90,7 @@ def load_access_token() -> Optional[str]:
     age_hours = (datetime.now(tz=timezone.utc) - saved_at).total_seconds() / 3600
 
     # Zerodha access tokens are valid until midnight IST (~18.5 hours max from 8 AM)
-    if age_hours > 20:
+    if age_hours > config.ACCESS_TOKEN_MAX_AGE_HOURS:
         logger.warning("Stored access token is %0.1f hours old — likely expired", age_hours)
         return None
 

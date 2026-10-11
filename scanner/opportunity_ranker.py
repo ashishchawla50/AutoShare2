@@ -62,26 +62,26 @@ def score_setup(setup: TradeSetup) -> float:
     Returns:
         Composite score float (0–100). Higher = better setup.
     """
-    vol_score = min(100.0, ((setup.volume_multiplier - 2.0) / 3.0) * 100)
+    vol_score = min(100.0, ((setup.volume_multiplier - config.RANK_VOLUME_SCORE_FLOOR)
+                            / config.RANK_VOLUME_SCORE_SPAN) * 100)
     vol_score = max(0.0, vol_score)
 
     atr_score = 100.0 if setup.atr_compressed else 0.0
 
     # Prasenjit Paul: stocks within 10% of 52w high are primed to break out
-    if setup.pct_below_52w_high <= 0.10:
-        proximity_bonus = 5.0
-    elif setup.pct_below_52w_high <= 0.15:
-        proximity_bonus = 3.0
-    else:
-        proximity_bonus = 0.0
+    proximity_bonus = 0.0
+    for max_below, bonus in config.RANK_52W_PROXIMITY_BONUS:
+        if setup.pct_below_52w_high <= max_below:
+            proximity_bonus = bonus
+            break
 
     composite = (
-        setup.rs_percentile          * 0.35
-        + setup.vcp_tightness_score  * 0.25
-        + setup.trend_template_score * 0.20
-        + vol_score                  * 0.10
-        + atr_score                  * 0.05
-        + setup.weinstein_stage_bonus * 0.05
+        setup.rs_percentile          * config.RANK_WEIGHT_RS
+        + setup.vcp_tightness_score  * config.RANK_WEIGHT_TIGHTNESS
+        + setup.trend_template_score * config.RANK_WEIGHT_TREND_TEMPLATE
+        + vol_score                  * config.RANK_WEIGHT_VOLUME
+        + atr_score                  * config.RANK_WEIGHT_ATR
+        + setup.weinstein_stage_bonus * config.RANK_WEIGHT_WEINSTEIN
         + setup.sector_penalty        # flat penalty, already negative
         + proximity_bonus             # flat bonus: near 52w high = ready to break out
     )
@@ -100,7 +100,7 @@ def rank_setups(setups: list[TradeSetup]) -> list[TradeSetup]:
     eligible: list[TradeSetup] = []
     for setup in setups:
         setup.composite_score = score_setup(setup)
-        setup.is_market_leader = setup.rs_percentile >= 85.0
+        setup.is_market_leader = setup.rs_percentile >= config.MARKET_LEADER_RS
         eligible.append(setup)
 
     ranked = sorted(eligible, key=lambda s: s.composite_score, reverse=True)

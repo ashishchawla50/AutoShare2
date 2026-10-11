@@ -23,8 +23,8 @@ from config.config import config
 
 logger = logging.getLogger("orders.manager")
 
-_ORDER_STATUS_POLL_INTERVAL = 2   # seconds
-_ORDER_STATUS_TIMEOUT = 30        # seconds
+_ORDER_STATUS_POLL_INTERVAL = config.ORDER_STATUS_POLL_SECONDS
+_ORDER_STATUS_TIMEOUT = config.ORDER_STATUS_TIMEOUT_SECONDS
 _TERMINAL_STATUSES = {"COMPLETE", "CANCELLED", "REJECTED"}
 
 
@@ -119,7 +119,7 @@ class OrderManager:
             send_system_error("OrderManager", f"SELL order rejected for {symbol}")
             return None
 
-        final_status = self._wait_for_fill(order_id, timeout=120)
+        final_status = self._wait_for_fill(order_id, timeout=config.ORDER_FILL_WAIT_SECONDS)
         if final_status != "COMPLETE":
             # Upgrade to market order
             logger.warning(
@@ -256,12 +256,12 @@ class OrderManager:
 
         return result
 
-    def get_limit_sell_price(self, symbol: str, offset_pct: float = 0.001) -> float:
+    def get_limit_sell_price(self, symbol: str, offset_pct: float = None) -> float:
         """Return a limit sell price slightly below LTP to avoid slippage.
 
         Args:
             symbol:     NSE trading symbol.
-            offset_pct: Fraction below LTP to set limit (default 0.1%).
+            offset_pct: Fraction below LTP (default config.PARTIAL_SELL_LIMIT_DISCOUNT).
 
         Returns:
             Limit price float (rounded to nearest 0.05 for NSE tick size).
@@ -271,8 +271,10 @@ class OrderManager:
         ltp = ltp_data.get(f"NSE:{symbol}", 0.0)
         if ltp <= 0:
             return 0.0
+        if offset_pct is None:
+            offset_pct = config.PARTIAL_SELL_LIMIT_DISCOUNT
         limit = ltp * (1 - offset_pct)
-        return round(limit / 0.05) * 0.05  # round to nearest 0.05
+        return round(limit / config.PRICE_TICK) * config.PRICE_TICK  # NSE tick
 
     def _wait_for_fill(self, order_id: str, timeout: int = _ORDER_STATUS_TIMEOUT) -> str:
         """Poll order status until it reaches a terminal state or timeout.
@@ -321,5 +323,5 @@ class OrderManager:
             ltp_data = self._kite.get_ltp([f"NSE:{symbol}"])
             price = ltp_data.get(f"NSE:{symbol}", 0.0)
 
-        required = quantity * price * 1.05  # 5% buffer
+        required = quantity * price * config.MARGIN_BUFFER_MULT
         return available >= required

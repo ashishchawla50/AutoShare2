@@ -19,7 +19,7 @@ def generate_weekly_report(portfolio_tracker) -> str:
     summary = portfolio_tracker.get_performance_summary()
     snap = portfolio_tracker.snapshot()
 
-    week_start = date.today() - timedelta(days=7)
+    week_start = date.today() - timedelta(days=config.WEEKLY_REPORT_DAYS)
     db_path = f"sqlite:///{config.DB_PATH}/portfolio_state.db"
     engine = create_engine(db_path)
 

@@ -275,10 +275,11 @@ class PortfolioManager:
         )
         return trade_record
 
-    def get_recently_closed_trades(self, days: int = 7) -> list[dict]:
+    def get_recently_closed_trades(self, days: int = None) -> list[dict]:
         """Return trades (current mode) whose exit_date is within the last `days` days."""
         try:
             paper_flag = 1 if config.PAPER_TRADING_MODE else 0
+            days = config.RECENT_TRADES_DEFAULT_DAYS if days is None else days
             cutoff = (date.today() - timedelta(days=days)).isoformat()
             df = pd.read_sql(
                 "SELECT symbol, shares, exit_date, exit_reason FROM trades "

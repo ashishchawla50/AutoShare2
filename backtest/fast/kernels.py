@@ -31,8 +31,18 @@ def _pairwise_sum(a, s, n):
 
 @njit(cache=True)
 def _vcp_rows(cand, first, high, low, close, volume, tr, prefix_low_min, L,
-              verdict, pivot, vcp_low):
-    """detect_vcp + tightness gate for each candidate row g (prefix [first[g] .. g])."""
+              verdict, pivot, vcp_low, prm, fr_th, fr_pts, red_th, red_pts):
+    """detect_vcp + tightness gate for each candidate row g (prefix [first[g] .. g]).
+
+    Every rule constant comes from config via signals.vcp_params(): prm holds the scalars
+    (order fixed by signals.VCP_PARAM_NAMES); fr_th/fr_pts and red_th/red_pts are the
+    tightness tables VCP_TIGHTNESS_FINAL_RANGE_POINTS and VCP_TIGHTNESS_REDUCTION_POINTS.
+    """
+    pre_min = int(prm[0]); min_up = prm[1]; sw = int(prm[2]); min_swing = prm[3]
+    min_c = int(prm[4]); max_c = int(prm[5]); max_viol = int(prm[6])
+    af = int(prm[7]); aslow = int(prm[8]); atr_comp = prm[9]; low_mult = prm[10]
+    per_c = prm[11]; cap_c = prm[12]; vol_bonus = prm[13]; score_max = prm[14]
+    min_tight = prm[15]
     hi_idx = np.empty(L, np.int64)
     lo_idx = np.empty(L, np.int64)
     c_hi = np.empty(L, np.int64)
@@ -43,7 +53,7 @@ def _vcp_rows(cand, first, high, low, close, volume, tr, prefix_low_min, L,
         g = cand[t]
         s = first[g]
         m = g - s + 1
-        if m < L + 60:
+        if m < L + pre_min:
             verdict[g] = 2          # "Insufficient data"
             continue
         w0 = g - L + 1              # consolidation window [w0, g]
@@ -52,28 +62,39 @@ def _vcp_rows(cand, first, high, low, close, volume, tr, prefix_low_min, L,
             verdict[g] = 2
             continue
         up = (close[w0] - prior_low) / prior_low
-        if up < 0.30:
+        if up < min_up:
             verdict[g] = 2
             continue
 
-        # ATR compression: mean(TR last 10) / mean(TR last 50)
-        atr10 = _pairwise_sum(tr, g - 9, 10) / 10
-        atr50 = _pairwise_sum(tr, g - 49, 50) / 50
+        # ATR compression: mean(TR last af) / mean(TR last aslow)
+        atr10 = _pairwise_sum(tr, g - af + 1, af) / af
+        atr50 = _pairwise_sum(tr, g - aslow + 1, aslow) / aslow
         compressed = False
         if atr50 > 0.0:
-            compressed = (atr10 / atr50) < 0.7
+            compressed = (atr10 / atr50) < atr_comp
 
-        # Swing highs/lows inside the window (left=2 ties allowed, right=2 strict)
+        # Swing highs/lows inside the window (left=sw ties allowed, right=sw strict)
         nh = 0
         nl = 0
-        for j in range(2, L - 2):
+        for j in range(sw, L - sw):
             i = w0 + j
             h = high[i]
-            if h >= max(high[i - 2], high[i - 1]) and h > max(high[i + 1], high[i + 2]):
+            lw = low[i]
+            is_hi = True
+            is_lo = True
+            for k in range(1, sw + 1):
+                if not (h >= high[i - k]):
+                    is_hi = False
+                if not (h > high[i + k]):
+                    is_hi = False
+                if not (lw <= low[i - k]):
+                    is_lo = False
+                if not (lw < low[i + k]):
+                    is_lo = False
+            if is_hi:
                 hi_idx[nh] = j
                 nh += 1
-            lw = low[i]
-            if lw <= min(low[i - 2], low[i - 1]) and lw < min(low[i + 1], low[i + 2]):
+            if is_lo:
                 lo_idx[nl] = j
                 nl += 1
 
@@ -97,7 +118,7 @@ def _vcp_rows(cand, first, high, low, close, volume, tr, prefix_low_min, L,
             for k in range(hj + 1, lj + 1):
                 if volume[w0 + k] > pk:
                     pk = volume[w0 + k]
-            if rng < 0.01:
+            if rng < min_swing:
                 continue
             c_hi[nc] = hj
             c_lo[nc] = lj
@@ -116,19 +137,19 @@ def _vcp_rows(cand, first, high, low, close, volume, tr, prefix_low_min, L,
                     c_pk[kept] = c_pk[a]
                     kept += 1
             nc = kept
-        if nc < 2:
+        if nc < min_c:
             verdict[g] = 2
             continue
         off = 0
-        if nc > 4:
-            off = nc - 4
-            nc = 4
+        if nc > max_c:
+            off = nc - max_c
+            nc = max_c
 
         viol = 0
         for a in range(1, nc):
             if c_rng[off + a] >= c_rng[off + a - 1]:
                 viol += 1
-        if viol > 1 or (viol == 1 and not compressed):
+        if viol > max_viol or (viol >= 1 and not compressed):
             verdict[g] = 2
             continue
 
@@ -140,21 +161,19 @@ def _vcp_rows(cand, first, high, low, close, volume, tr, prefix_low_min, L,
 
         final = c_rng[off + nc - 1]
         score = 0.0
-        if final < 0.05:
-            score += 60.0
-        elif final < 0.10:
-            score += 45.0
-        elif final < 0.15:
-            score += 25.0
-        score += min(15.0, (nc - 1) * 5.0)
+        for q in range(fr_th.shape[0]):
+            if final < fr_th[q]:
+                score += fr_pts[q]
+                break
+        score += min(cap_c, (nc - 1) * per_c)
         red = final / c_rng[off]
-        if red < 0.3:
-            score += 10.0
-        elif red < 0.5:
-            score += 5.0
+        for q in range(red_th.shape[0]):
+            if red < red_th[q]:
+                score += red_pts[q]
+                break
         if vol_contracting:
-            score += 15.0
-        score = min(100.0, score)
+            score += vol_bonus
+        score = min(score_max, score)
 
         piv = high[w0]
         clow = low[w0]
@@ -163,10 +182,10 @@ def _vcp_rows(cand, first, high, low, close, volume, tr, prefix_low_min, L,
                 piv = high[i]
             if low[i] < clow:
                 clow = low[i]
-        if clow < prior_low * 0.97:
+        if clow < prior_low * low_mult:
             verdict[g] = 2
             continue
-        if score < 50.0:
+        if score < min_tight:
             verdict[g] = 3
             continue
         verdict[g] = 4

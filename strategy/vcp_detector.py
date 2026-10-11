@@ -71,7 +71,7 @@ def detect_vcp(
     """
     lookback = lookback or config.VCP_LOOKBACK_DAYS
 
-    if len(daily_ohlcv) < lookback + 60:
+    if len(daily_ohlcv) < lookback + config.VCP_PRE_BASE_MIN_DAYS:
         return VCPResult(
             is_valid=False,
             pivot_price=0,
@@ -106,14 +106,15 @@ def detect_vcp(
         )
 
     prior_uptrend_pct = (consolidation_start_price - prior_low) / prior_low
-    if prior_uptrend_pct < 0.30:
+    if prior_uptrend_pct < config.VCP_MIN_PRIOR_UPTREND_PCT:
         return VCPResult(
             is_valid=False, pivot_price=0, consolidation_low=0,
             contraction_count=0, volume_contraction_confirmed=False,
             tightness_score=0, atr_compression_ratio=1.0, atr_compressed=False,
             prior_uptrend_pct=prior_uptrend_pct,
             consolidation_days=len(consolidation_df),
-            failure_reason=f"Prior uptrend only {prior_uptrend_pct:.1%} (need ≥30%)",
+            failure_reason=(f"Prior uptrend only {prior_uptrend_pct:.1%} "
+                            f"(need ≥{config.VCP_MIN_PRIOR_UPTREND_PCT:.0%})"),
         )
 
     # ── ATR compression (objective volatility measure) ───────────────────────
@@ -122,7 +123,7 @@ def detect_vcp(
     # ── Step 3: Identify swing highs and lows within consolidation ───────────
     contractions = _identify_contractions(consolidation_df)
 
-    if len(contractions) < 2:
+    if len(contractions) < config.VCP_MIN_CONTRACTIONS:
         return VCPResult(
             is_valid=False, pivot_price=0, consolidation_low=0,
             contraction_count=len(contractions),
@@ -130,12 +131,13 @@ def detect_vcp(
             tightness_score=0, atr_compression_ratio=atr_compression_ratio, atr_compressed=atr_compressed,
             prior_uptrend_pct=prior_uptrend_pct,
             consolidation_days=len(consolidation_df),
-            failure_reason=f"Only {len(contractions)} contractions (need 2–4)",
+            failure_reason=(f"Only {len(contractions)} contractions "
+                            f"(need {config.VCP_MIN_CONTRACTIONS}–{config.VCP_MAX_CONTRACTIONS})"),
         )
 
-    if len(contractions) > 4:
-        # Too many swings = messy base; trim to last 4
-        contractions = contractions[-4:]
+    if len(contractions) > config.VCP_MAX_CONTRACTIONS:
+        # Too many swings = messy base; keep the most recent ones
+        contractions = contractions[-config.VCP_MAX_CONTRACTIONS:]
 
     # ── Step 4: Each contraction must be smaller than the previous ───────────
     # One violation is allowed; if violated, ATR compression (ratio < 0.7) must
@@ -144,7 +146,7 @@ def detect_vcp(
         1 for i in range(1, len(contractions))
         if contractions[i].range_pct >= contractions[i - 1].range_pct
     )
-    if range_violations > 1:
+    if range_violations > config.VCP_MAX_RANGE_VIOLATIONS:
         return VCPResult(
             is_valid=False, pivot_price=0, consolidation_low=0,
             contraction_count=len(contractions),
@@ -153,9 +155,10 @@ def detect_vcp(
             prior_uptrend_pct=prior_uptrend_pct,
             consolidation_days=len(consolidation_df),
             contractions=contractions,
-            failure_reason=f"{range_violations} range violations in contractions (max 1 allowed)",
+            failure_reason=(f"{range_violations} range violations in contractions "
+                            f"(max {config.VCP_MAX_RANGE_VIOLATIONS} allowed)"),
         )
-    if range_violations == 1 and not atr_compressed:
+    if range_violations >= 1 and not atr_compressed:
         return VCPResult(
             is_valid=False, pivot_price=0, consolidation_low=0,
             contraction_count=len(contractions),
@@ -164,7 +167,8 @@ def detect_vcp(
             prior_uptrend_pct=prior_uptrend_pct,
             consolidation_days=len(consolidation_df),
             contractions=contractions,
-            failure_reason=f"Range violation requires ATR compression (ratio={atr_compression_ratio:.2f} >= 0.7)",
+            failure_reason=(f"Range violation requires ATR compression "
+                            f"(ratio={atr_compression_ratio:.2f} >= {config.VCP_ATR_COMPRESSED_BELOW})"),
         )
 
     # ── Step 5: Volume contraction — each swing has lower peak volume ─────────
@@ -183,7 +187,7 @@ def detect_vcp(
     # ── Step 8: Consolidation low must not be undercut > 3% ─────────────────
     consolidation_low = float(consolidation_df["low"].min())
     base_low = float(pre_consolidation_df["low"].min())
-    if consolidation_low < base_low * 0.97:
+    if consolidation_low < base_low * config.VCP_MIN_LOW_VS_BASE_LOW:
         return VCPResult(
             is_valid=False, pivot_price=pivot_price, consolidation_low=consolidation_low,
             contraction_count=len(contractions),
@@ -217,8 +221,9 @@ def _identify_contractions(df: pd.DataFrame) -> list[Contraction]:
 
     A contraction is defined as a swing from a local high to a subsequent local low.
     """
-    highs_mask = swing_highs(df["high"], left=2, right=2)
-    lows_mask = swing_lows(df["low"], left=2, right=2)
+    w = config.VCP_SWING_WINDOW
+    highs_mask = swing_highs(df["high"], left=w, right=w)
+    lows_mask = swing_lows(df["low"], left=w, right=w)
 
     high_indices = [i for i, v in enumerate(highs_mask) if v]
     low_indices = [i for i, v in enumerate(lows_mask) if v]
@@ -244,7 +249,7 @@ def _identify_contractions(df: pd.DataFrame) -> list[Contraction]:
         peak_volume = float(segment_volume.max())
         avg_vol_in_swing = float(segment_volume.mean())
 
-        if range_pct < 0.01:  # ignore micro swings
+        if range_pct < config.VCP_MIN_SWING_RANGE_PCT:  # ignore micro swings
             continue
 
         contractions.append(
@@ -286,7 +291,7 @@ def _calculate_atr_compression(daily_ohlcv: pd.DataFrame) -> tuple[float, bool]:
     Returns:
         (ratio, is_compressed) where is_compressed = ratio < 0.7
     """
-    if len(daily_ohlcv) < 55:
+    if len(daily_ohlcv) < config.VCP_ATR_MIN_HISTORY:
         return 1.0, False
 
     high = daily_ohlcv["high"]
@@ -301,14 +306,14 @@ def _calculate_atr_compression(daily_ohlcv: pd.DataFrame) -> tuple[float, bool]:
         (low - prev_close).abs(),
     ], axis=1).max(axis=1)
 
-    atr10 = float(tr.tail(10).mean())
-    atr50 = float(tr.tail(50).mean())
+    atr10 = float(tr.tail(config.VCP_ATR_FAST_DAYS).mean())
+    atr50 = float(tr.tail(config.VCP_ATR_SLOW_DAYS).mean())
 
     if atr50 <= 0:
         return 1.0, False
 
     ratio = atr10 / atr50
-    return round(ratio, 3), ratio < 0.7
+    return round(ratio, 3), ratio < config.VCP_ATR_COMPRESSED_BELOW
 
 
 def _calculate_tightness(contractions: list[Contraction]) -> float:
@@ -326,24 +331,23 @@ def _calculate_tightness(contractions: list[Contraction]) -> float:
     final_range = contractions[-1].range_pct
     score = 0.0
 
-    # Base: final contraction tightness
-    if final_range < 0.05:
-        score += 60.0
-    elif final_range < 0.10:
-        score += 45.0
-    elif final_range < 0.15:
-        score += 25.0
+    # Base: final contraction tightness (first matching band wins)
+    for max_range, points in config.VCP_TIGHTNESS_FINAL_RANGE_POINTS:
+        if final_range < max_range:
+            score += points
+            break
 
-    # Bonus for number of clean contractions (2=+5, 3=+10, 4=+15)
-    score += min(15.0, (len(contractions) - 1) * 5.0)
+    # Bonus for number of clean contractions beyond the first
+    score += min(config.VCP_TIGHTNESS_CONTRACTION_CAP,
+                 (len(contractions) - 1) * config.VCP_TIGHTNESS_POINTS_PER_CONTRACTION)
 
-    # Bonus: range reduction ratio — higher = more orderly contraction
-    if len(contractions) >= 2:
+    # Bonus: range reduction ratio — lower = more orderly contraction
+    if len(contractions) >= config.VCP_MIN_CONTRACTIONS:
         reduction_ratio = contractions[-1].range_pct / contractions[0].range_pct
-        if reduction_ratio < 0.3:
-            score += 10.0  # final range is <30% of initial range
-        elif reduction_ratio < 0.5:
-            score += 5.0
+        for max_ratio, points in config.VCP_TIGHTNESS_REDUCTION_POINTS:
+            if reduction_ratio < max_ratio:
+                score += points
+                break
 
     # Volume contraction bonus
     volume_contracting = all(
@@ -351,6 +355,6 @@ def _calculate_tightness(contractions: list[Contraction]) -> float:
         for i in range(1, len(contractions))
     )
     if volume_contracting:
-        score += 15.0
+        score += config.VCP_TIGHTNESS_VOLUME_BONUS
 
-    return min(100.0, score)
+    return min(config.VCP_TIGHTNESS_MAX, score)

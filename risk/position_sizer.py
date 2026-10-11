@@ -125,4 +125,4 @@ def calculate_stop_loss_price(entry_price: float, stop_pct: float = None) -> flo
     """
     stop_pct = stop_pct or config.HARD_STOP_PCT
     raw_stop = entry_price * (1 - stop_pct)
-    return round(raw_stop / 0.05) * 0.05
+    return round(raw_stop / config.PRICE_TICK) * config.PRICE_TICK

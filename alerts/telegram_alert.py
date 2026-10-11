@@ -18,7 +18,7 @@ from config.config import config
 logger = logging.getLogger("trading.alerts")
 
 _BASE_URL = "https://api.telegram.org/bot{token}/sendMessage"
-_TIMEOUT = 10  # seconds
+_TIMEOUT = config.TELEGRAM_TIMEOUT_SECONDS
 
 
 def _prefix() -> str:

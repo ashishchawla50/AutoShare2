@@ -45,19 +45,20 @@ def is_entry_window() -> bool:
 
 
 def is_pre_market() -> bool:
-    """Return True during pre-market hours (before 9:15 but after 8:00 IST)."""
+    """Return True between BOT_DAY_START and MARKET_OPEN (IST) on a trading day."""
     now = now_ist()
     if not is_trading_day(now.date()):
         return False
     current_time = now.time().replace(second=0, microsecond=0)
-    return datetime.time(8, 0) <= current_time < _parse_time(config.MARKET_OPEN)
+    return _parse_time(config.BOT_DAY_START) <= current_time < _parse_time(config.MARKET_OPEN)
 
 
 def minutes_to_market_close() -> int:
     """Return minutes remaining until market close; negative if market is closed."""
     now = now_ist()
+    close_t = _parse_time(config.MARKET_CLOSE)
     close_today = now.replace(
-        hour=15, minute=30, second=0, microsecond=0
+        hour=close_t.hour, minute=close_t.minute, second=0, microsecond=0
     )
     delta = close_today - now
     return int(delta.total_seconds() / 60)

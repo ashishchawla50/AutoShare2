@@ -10,6 +10,7 @@ import logging
 from datetime import date
 from typing import Optional
 
+from config.config import config
 from exit.profit_manager import should_exit_on_time_stop
 from regime.regime_detector import Regime, RegimeState
 
@@ -42,12 +43,12 @@ def check_regime_exit(
     today = current_date or today_ist()
 
     if regime_state.regime == Regime.EXTREME_VOLATILITY:
-        if days_since_bear_start >= 2:
+        if days_since_bear_start >= config.REGIME_EXIT_EXTREME_VOL_DAYS:
             return True, f"Extreme volatility exit (VIX={regime_state.india_vix:.1f})"
 
     if regime_state.regime == Regime.BEAR:
-        if days_since_bear_start >= 3:
-            return True, f"Bear regime exit (day {days_since_bear_start}/3)"
+        if days_since_bear_start >= config.REGIME_EXIT_BEAR_DAYS:
+            return True, f"Bear regime exit (day {days_since_bear_start}/{config.REGIME_EXIT_BEAR_DAYS})"
 
     return False, ""
 

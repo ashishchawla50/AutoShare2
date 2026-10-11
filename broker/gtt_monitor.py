@@ -37,8 +37,8 @@ class GTTBackupMonitor:
         kite_client: Connected KiteClient instance.
     """
 
-    POLL_INTERVAL_SECONDS = 60
-    MAX_SELL_ATTEMPTS = 3
+    POLL_INTERVAL_SECONDS = config.GTT_MONITOR_POLL_SECONDS
+    MAX_SELL_ATTEMPTS = config.GTT_MONITOR_MAX_SELL_ATTEMPTS
 
     def __init__(self, kite_client) -> None:
         self._kite = kite_client

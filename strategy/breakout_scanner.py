@@ -61,7 +61,7 @@ def check_range_breakout(symbol: str, df: pd.DataFrame) -> BreakoutScanResult:
         volume_ratio=0.0, rsi14=0.0, ema50=0.0, days_high=0, score=0.0,
     )
 
-    min_bars = max(config.BREAKOUT_LOOKBACK_DAYS + 1, 60)
+    min_bars = max(config.BREAKOUT_LOOKBACK_DAYS + 1, config.BREAKOUT_MIN_HISTORY)
     if len(df) < min_bars:
         return _fail(f"Insufficient data ({len(df)} bars, need {min_bars})")
 
@@ -74,10 +74,11 @@ def check_range_breakout(symbol: str, df: pd.DataFrame) -> BreakoutScanResult:
     # Highest close in the lookback window (excluding today)
     prior_high = float(close.iloc[-(lookback + 1):-1].max())
     e50 = float(ema(close, config.BREAKOUT_EMA_PERIOD).iloc[-1])
-    rsi14 = float(rsi(close, 14).iloc[-1])
+    rsi14 = float(rsi(close, config.BREAKOUT_RSI_PERIOD).iloc[-1])
 
-    # Prior 20-day average volume (excludes today — avoids self-reference)
-    avg_vol_20d = float(volume.iloc[-21:-1].mean())
+    # Prior N-day average volume (excludes today — avoids self-reference)
+    n_vol = config.BREAKOUT_VOLUME_AVG_LOOKBACK
+    avg_vol_20d = float(volume.iloc[-(n_vol + 1):-1].mean())
     today_vol = float(volume.iloc[-1])
     vol_ratio = today_vol / avg_vol_20d if avg_vol_20d > 0 else 0.0
 
@@ -114,10 +115,13 @@ def check_range_breakout(symbol: str, df: pd.DataFrame) -> BreakoutScanResult:
     days_high = _count_days_high(close, lookback)
 
     # Score: 0-100
-    vol_score = min(100.0, (vol_ratio - 1.5) / 3.5 * 100)
-    rsi_score = max(0.0, 100.0 - abs(rsi14 - 60.0) * 3)
+    vol_score = min(100.0, (vol_ratio - config.BREAKOUT_SCORE_VOL_FLOOR)
+                    / config.BREAKOUT_SCORE_VOL_SPAN * 100)
+    rsi_score = max(0.0, 100.0 - abs(rsi14 - config.BREAKOUT_SCORE_RSI_CENTER)
+                    * config.BREAKOUT_SCORE_RSI_SLOPE)
     days_score = min(100.0, days_high / lookback * 100)
-    score = round(vol_score * 0.5 + rsi_score * 0.3 + days_score * 0.2, 2)
+    w_vol, w_rsi, w_days = config.BREAKOUT_SCORE_WEIGHTS
+    score = round(vol_score * w_vol + rsi_score * w_rsi + days_score * w_days, 2)
 
     logger.debug(
         "Breakout pass: %s price=%.2f EMA50=%.2f vol=%.1fx RSI=%.1f %dd-high score=%.1f",

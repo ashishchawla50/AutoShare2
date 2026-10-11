@@ -23,6 +23,8 @@ from enum import Enum
 
 import pandas as pd
 
+from config.config import config
+
 logger = logging.getLogger("scanner.sector_regime")
 
 
@@ -84,13 +86,14 @@ def calculate_sector_strengths(
         sector = get_symbol_sector(symbol)
         if sector == "OTHER" or sector not in sector_scores:
             continue
-        if len(df) < 50:
+        if len(df) < config.SECTOR_MIN_HISTORY:
             continue
 
         close = df["close"]
-        ema50 = close.ewm(span=50, adjust=False).mean()
+        ema50 = close.ewm(span=config.SECTOR_EMA_DAYS, adjust=False).mean()
         current_close = float(close.iloc[-1])
-        close_20d_ago = float(close.iloc[-20]) if len(close) >= 20 else current_close
+        td = config.SECTOR_TREND_DAYS
+        close_20d_ago = float(close.iloc[-td]) if len(close) >= td else current_close
 
         above_ema50 = current_close > float(ema50.iloc[-1])
         higher_than_20d = current_close > close_20d_ago
@@ -103,9 +106,9 @@ def calculate_sector_strengths(
             results[sector] = SectorStrength.NEUTRAL
             continue
         pct_healthy = sum(votes) / len(votes)
-        if pct_healthy >= 0.60:
+        if pct_healthy >= config.SECTOR_STRONG_AT:
             results[sector] = SectorStrength.STRONG
-        elif pct_healthy >= 0.40:
+        elif pct_healthy >= config.SECTOR_NEUTRAL_AT:
             results[sector] = SectorStrength.NEUTRAL
         else:
             results[sector] = SectorStrength.WEAK
@@ -130,5 +133,5 @@ def get_sector_penalty(sector: str, strengths: dict[str, SectorStrength]) -> flo
     """
     strength = strengths.get(sector, SectorStrength.NEUTRAL)
     if strength == SectorStrength.WEAK:
-        return -10.0
+        return config.SECTOR_WEAK_PENALTY
     return 0.0

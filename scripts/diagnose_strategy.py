@@ -60,7 +60,7 @@ def main() -> None:
         df = load_ohlcv(symbol, start, end)
         total += 1
 
-        if df is None or len(df) < 210:
+        if df is None or len(df) < config.TT_MIN_HISTORY_DAYS:
             no_data += 1
             continue
 
@@ -105,7 +105,7 @@ def main() -> None:
     print("PIPELINE BREAKDOWN (scan mode — no breakout required)")
     print("=" * 65)
     print(f"Total symbols checked      : {total}")
-    print(f"  Insufficient data (<210d): {no_data}")
+    print(f"  Insufficient data (<{config.TT_MIN_HISTORY_DAYS}d): {no_data}")
     print(f"  Tradeable base            : {tradeable_base}")
     print()
     print(f"  Failed Trend Template    : {tt_fail:4d}  ({pct(tt_fail)} of tradeable base)")

@@ -121,12 +121,12 @@ class PortfolioTracker:
         except Exception as exc:
             logger.error("Failed to record daily metrics: %s", exc)
 
-    def get_trade_history(self, days: int = 90) -> pd.DataFrame:
+    def get_trade_history(self, days: int = None) -> pd.DataFrame:
         """Return closed trade history for the last N days."""
         cutoff = today_ist().isoformat()
         try:
             return pd.read_sql(
-                f"SELECT * FROM trades ORDER BY exit_date DESC LIMIT 500",
+                f"SELECT * FROM trades ORDER BY exit_date DESC LIMIT {int(config.TRADE_HISTORY_MAX_ROWS)}",
                 self._engine,
             )
         except Exception as exc:
@@ -135,7 +135,7 @@ class PortfolioTracker:
 
     def get_performance_summary(self) -> dict:
         """Return key performance metrics from trade history."""
-        history = self.get_trade_history(days=365)
+        history = self.get_trade_history(days=config.TRADE_HISTORY_YEAR_DAYS)
         if history.empty:
             return {"trades": 0}
 

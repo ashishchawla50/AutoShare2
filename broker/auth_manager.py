@@ -139,7 +139,7 @@ class AuthManager:
                     "user_id": config.ZERODHA_USER_ID,
                     "password": config.ZERODHA_PASSWORD,
                 },
-                timeout=15,
+                timeout=config.AUTH_HTTP_TIMEOUT_SECONDS,
             )
             resp1.raise_for_status()
             data1 = resp1.json()
@@ -154,7 +154,7 @@ class AuthManager:
                     "twofa_value": totp_code,
                     "twofa_type": "totp",
                 },
-                timeout=15,
+                timeout=config.AUTH_HTTP_TIMEOUT_SECONDS,
             )
             resp2.raise_for_status()
 
@@ -165,12 +165,12 @@ class AuthManager:
             kite = KiteConnect(api_key=config.ZERODHA_API_KEY)
             login_url = kite.login_url()
 
-            resp3 = session.get(login_url, timeout=15, allow_redirects=False)
+            resp3 = session.get(login_url, timeout=config.AUTH_HTTP_TIMEOUT_SECONDS, allow_redirects=False)
             location = resp3.headers.get("Location", "")
 
             # Follow one more redirect if request_token not in first location
             if "request_token=" not in location and location:
-                resp4 = session.get(location, timeout=15, allow_redirects=False)
+                resp4 = session.get(location, timeout=config.AUTH_HTTP_TIMEOUT_SECONDS, allow_redirects=False)
                 location = resp4.headers.get("Location", "")
 
             if "request_token=" not in location:

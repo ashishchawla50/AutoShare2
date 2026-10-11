@@ -369,6 +369,7 @@ The bot is **not** an HTTP API server. External surfaces are:
     backtest's 4-position ceiling. `_check_margin` and `get_account_value` still read the raw broker balance, which is correct.
   - Regression tests: `tests/test_live_safety.py` (10 tests).
   - **Not deployed.** The AutoShare repo the VPS runs (`6ca6d37`) still has all three bugs.
+- **Hardcode sweep (2026-10-11):** ~300 rule and operational literals moved into `config.py` (no behaviour change: all 6 oracle fixtures exact, every strategy's full-window trade ledger byte-identical, scheduler crons identical). Found on the way: tightness gate 50 typed in 3 places ignoring `VCP_MIN_TIGHTNESS_SCORE`; informational stop still 7%; `has_upcoming_event` defaults swapped (results 3 / other 7 vs the real 7 / 3); `is_pre_market` used 08:00 vs `PRE_MARKET_START` 09:00 (now `BOT_DAY_START`); `minutes_to_market_close` ignored `MARKET_CLOSE`; `setup_logging` ignored its `log_dir`. **Open, not changed:** the ranker's volume score still starts at 2.0x (`RANK_VOLUME_SCORE_FLOOR`) while entries need 1.5x; `PortfolioTracker.get_trade_history` ignores `days`.
 - Test suite (2026-10-11): 262 passed, 2 skipped, **15 failed**. The 15 failures predate PR #1 and are all backtest tests
   (`test_backtest.py` ×5, `test_reference_parity.py` ×9, `test_universe_churn.py` ×1). Causes: `reconstructed.db` is missing
   under the conftest tmp dir, and the test passes a `use_panel` kwarg that `BacktestEngine` no longer accepts.
@@ -404,6 +405,7 @@ The bot is **not** an HTTP API server. External surfaces are:
 - `from __future__ import annotations` in every module (postponed evaluation)
 - Dataclasses used for structured return types throughout (never plain tuples for multi-field results)
 - All config values in `TradingConfig` dataclass with comments explaining the rationale
+- **No hardcoded numbers in decision code (since 2026-10-11).** Every threshold, period, weight, timeout, schedule time and cost rate lives in `config/config.py`; live code AND both backtest engines read it from there (the numba kernel receives it via `signals.vcp_params()`). `tests/test_no_hardcoded_rules.py` fails on any new numeric literal in `main.py`, `scheduler.py`, `strategy/`, `exit/`, `regime/`, `risk/`, `scanner/`, `broker/`, `portfolio/` and the fast engine. Add the value to config instead of allowlisting it. Signal caches key on every config value they use, so a config change rebuilds them
 - Logger names follow domain prefixes: `"trading.*"`, `"orders.*"`, `"scanner.*"`, `"risk.*"`, `"regime"`, `"data.*"` — determines which log file receives the entry
 - Paper mode intercept pattern: every order/GTT call checks `config.PAPER_TRADING_MODE` and returns a fake ID without hitting Kite
 - Pure functions where possible in strategy/filter code — each filter is `(symbol, data) → (bool, reason_str)`
@@ -424,6 +426,7 @@ The bot is **not** an HTTP API server. External surfaces are:
 10. **Sector exposure cap is 30%.** Risk manager enforces this before approving any entry. `RiskManager.approve_entry` gates **all four strategies** (since 2026-07-10; previously VCP only) — it also re-checks the MAX_POSITIONS pool, duplicate holdings, and cash. Positions with unknown sector (Screener.in blocked) are excluded from the cap, pass-by-default.
 11. **Never sell bot positions from the Kite app.** Manual sells desync the ledger and dangle GTTs. Use `data/manual_exit.txt` (symbol per line → clean exit within 5 min) or `data/emergency_halt.flag`. A daily 8:20 reconcile catches offline closes/partial sells as a backstop (counts `t1_quantity` — unsettled T+1 shares are still held).
 12. **Always restart the bot after deploying code.** `git pull` on the VPS does not reload the running process — `sudo supervisorctl -c /etc/supervisor/supervisord.conf restart autoshare` is mandatory after every pull, and verify the process start time in `supervisorctl status` is newer than the pull. (A stale process caused the 2026-07-10 over-entry incident.)
+13. **Never type a rule number into code.** Put it in `config/config.py` and read it from there in live and backtest alike (see Coding Conventions). Two copies of one rule is how live drifts from what was tested.
 
 ---
 

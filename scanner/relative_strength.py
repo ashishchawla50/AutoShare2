@@ -66,19 +66,9 @@ def calculate_raw_rs(
         Raw RS score (excess return vs benchmark, weighted by period).
         Higher = better relative performance.
     """
-    # Skip most recent 21 days (1 month) to avoid short-term reversal bias
-    s1 = _period_perf(stock_returns, 21, 84)
-    s2 = _period_perf(stock_returns, 84, 147)
-    s3 = _period_perf(stock_returns, 147, 210)
-    s4 = _period_perf(stock_returns, 210, 252)
-
-    b1 = _period_perf(benchmark_returns, 21, 84)
-    b2 = _period_perf(benchmark_returns, 84, 147)
-    b3 = _period_perf(benchmark_returns, 147, 210)
-    b4 = _period_perf(benchmark_returns, 210, 252)
-
-    weighted_stock = 0.4 * s1 + 0.2 * s2 + 0.2 * s3 + 0.2 * s4
-    weighted_bench = 0.4 * b1 + 0.2 * b2 + 0.2 * b3 + 0.2 * b4
+    # config.RS_SEGMENTS skips the most recent month to avoid short-term reversal bias
+    weighted_stock = sum(w * _period_perf(stock_returns, a, b) for a, b, w in config.RS_SEGMENTS)
+    weighted_bench = sum(w * _period_perf(benchmark_returns, a, b) for a, b, w in config.RS_SEGMENTS)
 
     return weighted_stock - weighted_bench
 
@@ -100,7 +90,7 @@ def calculate_rs_universe(
     raw_scores: dict[str, float] = {}
 
     for symbol, df in universe_ohlcv.items():
-        if len(df) < 252:
+        if len(df) < config.RS_MIN_HISTORY_DAYS:
             continue
         stock_returns = df["close"].pct_change().dropna()
         raw_scores[symbol] = calculate_raw_rs(stock_returns, bench_returns)
@@ -110,7 +100,7 @@ def calculate_rs_universe(
 
     # Percentile rank across the universe
     scores_series = pd.Series(raw_scores)
-    percentile_ranks = scores_series.rank(pct=True) * 99
+    percentile_ranks = scores_series.rank(pct=True) * config.RS_PERCENTILE_SCALE
 
     return percentile_ranks.to_dict()
 

@@ -31,12 +31,8 @@ from config.config import config
 
 logger = logging.getLogger("backtest.regime")
 
-# Multipliers mirror RegimeDetector._position_multiplier (VIX-less)
-REGIME_MULTIPLIER = {
-    "BEAR": 0.0,
-    "CAUTIOUS": 0.5,
-    "BULL": 1.0,
-}
+# Multipliers mirror RegimeDetector._position_multiplier (VIX-less), from config
+REGIME_MULTIPLIER = {r: config.REGIME_SIZE_MULTIPLIER[r] for r in ("BEAR", "CAUTIOUS", "BULL")}
 
 # Higher rank = better regime; upgrades need 2-day confirmation
 _RANK = {"BEAR": 0, "CAUTIOUS": 1, "BULL": 2}
@@ -61,11 +57,13 @@ def build_regime_series(
         Dict mapping trading day → (regime_name, position_size_multiplier).
     """
     nifty_close = nifty_df["close"].astype(float)
-    nifty_ema200 = nifty_close.ewm(span=200, adjust=False, min_periods=200).mean()
+    span = config.REGIME_EMA_DAYS
+    nifty_ema200 = nifty_close.ewm(span=span, adjust=False, min_periods=span).mean()
 
-    # Nifty trending up: current 20d high > 20d high of 4 weeks ago
-    high_20d = nifty_close.rolling(20).max()
-    trending_up = high_20d > high_20d.shift(20)
+    # Nifty trending up: current N-day high > the N-day high before it
+    hd = config.REGIME_TREND_HIGH_DAYS
+    high_20d = nifty_close.rolling(hd).max()
+    trending_up = high_20d > high_20d.shift(hd)
 
     # Breadth: fraction of universe stocks above their own 200-day EMA,
     # aligned on the Nifty's date index
@@ -73,14 +71,15 @@ def build_regime_series(
         above_flags = {}
         for symbol, df in ohlcv_by_symbol.items():
             close = df["close"].astype(float)
-            if len(close) < 200:
+            if len(close) < span:
                 continue
-            ema200 = close.ewm(span=200, adjust=False, min_periods=200).mean()
+            ema200 = close.ewm(span=span, adjust=False, min_periods=span).mean()
             above_flags[symbol] = (close > ema200).reindex(nifty_close.index)
         if above_flags:
-            breadth = pd.DataFrame(above_flags).mean(axis=1, skipna=True).fillna(0.5)
+            breadth = (pd.DataFrame(above_flags).mean(axis=1, skipna=True)
+                       .fillna(config.REGIME_BREADTH_NEUTRAL))
         else:
-            breadth = pd.Series(0.5, index=nifty_close.index)  # neutral when no data
+            breadth = pd.Series(config.REGIME_BREADTH_NEUTRAL, index=nifty_close.index)
 
     # Raw daily classification (VIX-less _classify)
     price_gap_pct = (nifty_close - nifty_ema200) / nifty_ema200
@@ -91,7 +90,8 @@ def build_regime_series(
         & trending_up.fillna(False)
     )
     raw[is_bull] = "BULL"
-    is_bear = (breadth < config.BEAR_BREADTH_THRESHOLD) | (price_gap_pct < -0.03)
+    is_bear = ((breadth < config.BEAR_BREADTH_THRESHOLD)
+               | (price_gap_pct < -config.REGIME_BEAR_BELOW_EMA_PCT))
     raw[is_bear] = "BEAR"
     raw[nifty_ema200.isna()] = "CAUTIOUS"  # insufficient EMA warmup → neutral
 
