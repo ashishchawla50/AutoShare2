@@ -118,7 +118,7 @@ def calculate_stop_loss_price(entry_price: float, stop_pct: float = None) -> flo
 
     Args:
         entry_price: Entry price per share.
-        stop_pct:    Stop distance as fraction (default 7% from config).
+        stop_pct:    Stop distance as fraction (default config.HARD_STOP_PCT, 10% since 2026-10-11).
 
     Returns:
         Stop loss price rounded to nearest 0.05 (NSE tick size).

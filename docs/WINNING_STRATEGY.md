@@ -7,12 +7,14 @@ vcp_v2 breakout signal from Sept 2021 to June 2026 (297 signals):
 2. **my_strategy**: sell 50% at +10%, then let the rest run
 
 **Final status (2026-10-11): the full portfolio test kept the CURRENT EXITS, and my_strategy was
-rejected.** It tied in 2021–24 but fell to PF 1.01 in 2025–26 against 1.75. See "Portfolio test
-RESULT" near the bottom. The per-signal study below is what led to the test.
+rejected.** At 2× volume it tied in 2021–24 but fell to PF 1.01 in 2025–26 against 1.75.
+**Re-run at today's 1.5× volume, the gap is wider:** current exits PF 1.56 / 1.93, my_strategy
+1.12 / 1.44 (₹50k). See "Re-run at 1.5× volume" at the bottom. The per-signal study below is what
+led to the test.
 
 Both plans use the **same entry**: the vcp_v2 breakout. The stock is in a strong uptrend, goes
-quiet in a tight range, closes above the top of that range (the pivot) on 2× normal volume (1.5× since 2026-10-11;
-all results in this file were run at 2×), and
+quiet in a tight range, closes above the top of that range (the pivot) on 2× normal volume (1.5× since 2026-10-11.
+Every result in this file was run at 2×, except the "Re-run at 1.5× volume" section at the end.), and
 we buy at the next morning's open.
 
 ---
@@ -278,3 +280,64 @@ Days held here are calendar days (the earlier tables used trading days).
 
 The scripts used are in the 2026-10-11 session scratchpad (not in the repo). The
 numbers above are the full record.
+
+---
+
+## Re-run at 1.5× volume (2026-10-11, current default)
+
+The breakout volume rule changed from 2.0× to 1.5× after the portfolio test above. The same 12
+runs were repeated unchanged at 1.5×, using the same command and windows, with `--no-dd-halt` and
+CNC costs. **Harness check:** with the multiplier forced back to 2.0×, the runner reproduced the
+published rows exactly: S1 current 2021–24 gave 126 trades, PF 1.40, +28.20%; S1 my_strategy
+2025–26 gave 29 trades, PF 1.01; S2 current 2021–24 gave 157 trades, PF 1.06. Every difference
+below therefore comes from the volume change.
+
+**Verdict: unchanged, and stronger. The current exits stay in both setups.** At 1.5×, my_strategy
+has a lower PF than the current exits in **both** windows of **both** setups.
+
+### S1 — ₹50,000, 2% risk, 20% max position (4 positions)
+
+| Plan | Window | Trades | Win % | PF | Return | CAGR | Max DD | Bootstrap | Speed (per 30 days invested) | Avg days held | Days with no position |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| **Current exits, −10%** | 2021–24 | 153 | 40% | **1.56** | **+44.9%** | **+11.8%** | −11.9% | 92.2% | **+2.78%** | 20.5 | 34% |
+| **Current exits, −10%** | 2025–26 | 50 | 46% | **1.93** | **+11.6%** | **+7.7%** | −4.8% | 93.4% | **+2.88%** | 18.9 | 49% |
+| my_strategy, −10% | 2021–24 | 107 | 54% | 1.12 | +7.9% | +2.3% | −13.9% | 67.2% | +0.38% | 44.9 | 18% |
+| my_strategy, −10% | 2025–26 | 35 | 60% | 1.44 | +7.6% | +5.0% | −6.2% | 82.2% | +1.19% | 47.8 | 31% |
+| (ref) current exits, −7% | 2021–24 | 161 | 38% | 1.32 | +25.4% | +7.0% | −13.4% | 81.7% | +1.75% | 18.8 | 35% |
+| (ref) current exits, −7% | 2025–26 | 50 | 46% | 1.95 | +11.8% | +7.7% | −4.7% | 93.7% | +2.91% | 18.9 | 49% |
+
+### S2 — ₹1,00,000, 1% risk, 10% max position (8 positions)
+
+| Plan | Window | Trades | Win % | PF | Return | CAGR | Max DD | Bootstrap | Speed (per 30 days invested) | Avg days held | Days with no position |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Current exits, −10% | 2021–24 | 205 | 34% | **0.97** | −1.4% | −0.4% | −11.5% | 43.4% | −0.17% | 18.6 | 34% |
+| Current exits, −10% | 2025–26 | 60 | 45% | **1.49** | +4.5% | +3.0% | −3.3% | 84.7% | +1.90% | 18.0 | 49% |
+| my_strategy, −10% | 2021–24 | 131 | 52% | 0.92 | −3.7% | −1.1% | −11.0% | 35.4% | −0.30% | 41.6 | 18% |
+| my_strategy, −10% | 2025–26 | 37 | 51% | 0.94 | −0.6% | −0.4% | −6.0% | 43.2% | −0.20% | 49.9 | 30% |
+| (ref) current exits, −7% | 2021–24 | 208 | 33% | 0.91 | −4.5% | −1.4% | −13.2% | 33.9% | −0.53% | 17.9 | 35% |
+| (ref) current exits, −7% | 2025–26 | 60 | 45% | 1.51 | +4.6% | +3.0% | −3.3% | 85.6% | +1.95% | 18.0 | 49% |
+
+Days held are calendar days.
+
+### What the re-run shows
+
+1. **The extra 1.5× signals helped the current exits much more than my_strategy.** At S1 the
+   current exits went from PF 1.40 → 1.56 (2021–24) and 1.75 → 1.93 (2025–26). my_strategy fell
+   from 1.40 → 1.12 in 2021–24. Its 45-day average hold blocks the slots, so it takes 107 trades
+   against 153.
+2. **By the thumb rule (speed of profit) the gap is large:** +2.78% vs +0.38% per 30 days invested
+   in 2021–24, and +2.88% vs +1.19% in 2025–26.
+3. **S2 (8 × 10% positions at 1% risk) still does not work.** It loses money in 2021–24 with every
+   plan. At ₹1L, keep 2% risk with 20% positions.
+4. **The −10% first stop beats −7% again in 2021–24 at S1** (PF 1.56 vs 1.32), and the two tie in
+   2025–26. Batch A's A1 test of a −10% stop failed its own rule. **Update:** after a 4-way
+   volume × stop grid (docs/TEST_RESULTS_2026_10.md), the owner adopted **−10% as the default on
+   2026-10-11**, a deliberate override of A1.
+5. **These two windows are kinder than the continuous full run.** At the 1.5× default (−7% stop),
+   the continuous full 2021-09 → 2026-08 run gave PF 1.04 (CLAUDE.md). Split windows restart with
+   fresh capital and an empty book, so treat these numbers as a comparison between plans, not as
+   an expected return.
+
+The runner is `run_matrix.py` in the 2026-10-11 session scratchpad (not in the repo). It loops
+`scripts/run_backtest.py --strategy vcp_v2 --start/--end --capital --risk-pct --max-pos-pct --exit
+--stop-pct --no-dd-halt --cost-model cnc` over the 12 combinations.

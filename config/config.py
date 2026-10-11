@@ -258,8 +258,15 @@ class TradingConfig:
     MR_MAX_POSITIONS: int = 4      # cap MR slots; leave room for VCP/breakout in shared pool
 
     # ── Exit rules (VCP) ───────────────────────────────────────────────────
-    # 7% hard stop = standard Minervini initial stop; allows normal volatility
-    HARD_STOP_PCT: float = 0.07
+    # 10% first stop since 2026-10-11 (owner decision, was 7% = Minervini standard).
+    # The 4-way grid (docs/TEST_RESULTS_2026_10.md, "Volume x stop grid") showed -10% better
+    # than -7% at both 1.5x and 2.0x volume: full 2021-09..2026-08 PF 1.26 vs 1.04, max DD
+    # -13.3% vs -15.7%, faster in 2021-24 and tied in 2025-26. It technically failed the
+    # pre-registered "higher in both windows" rule (A1), so this is a deliberate override.
+    # At 2% risk the 20% position cap still binds exactly (2% / 10% = 20%), so position size
+    # is unchanged; a stopped trade now loses ~2% of capital instead of ~1.4%.
+    # Oracle fixtures were captured at 7%; tests/test_fast_engine.py pins that value.
+    HARD_STOP_PCT: float = 0.10
     # 15 days with <7% profit = capital is sitting idle; redeploy elsewhere
     TIME_STOP_DAYS: int = 15
     TIME_STOP_MIN_PROFIT_PCT: float = 0.07

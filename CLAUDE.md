@@ -142,6 +142,7 @@ AutoShare/
 │   ├── conftest.py          # Paper mode forced, Telegram disabled, ALL data paths → tmp_path
 │   ├── test_conftest_isolation.py # Guards that isolation (2026-08-06 regime poisoning)
 │   ├── test_order_safety.py # Live order-path hardening (fill-confirmed exits, GTT mandatory)
+│   ├── test_live_safety.py  # 2026-10-11 audit fixes: trailing-stop crash, GTT replace order, live cash cap
 │   ├── test_strategy.py     # VCP, trend template, stage analysis tests
 │   ├── test_filters.py      # All 9 stock filter tests
 │   ├── test_risk.py         # Position sizer, drawdown monitor tests
@@ -335,7 +336,8 @@ The bot is **not** an HTTP API server. External surfaces are:
 
 ## Current Development Status
 
-**AutoShare2 (2026-10-11): restart of AutoShare, research-first and local-only.**
+**AutoShare2 (2026-10-11): restart of AutoShare. Since 2026-10-11 it is the ONLY repo: all pulls, pushes and live deployment go through AutoShare2. The old AutoShare repo is retired (read-only history). Backtests run locally.**
+- **Pending one-time switch:** the VPS (`~/AutoShare`) still runs the old AutoShare repo. It must be repointed to AutoShare2 and restarted (rule 12).
 - **Base:** code from AutoShare `3a727c6`, which is the validated `b218e83` engine plus the August reconstructed-dataset work.
 - **Do not use AutoShare `6ca6d37` ("old code", 2026-10-11).** It gutted `backtest_engine.py`: vcp_v2 deleted, regime gate hardcoded BULL, 4-stock fallback universe. It also rewrote config: `MAX_POSITIONS` 5, `MAX_DRAWDOWN_PCT` 0.05, mean reversion un-benched. Those four files were restored from `3a727c6`.
 - **Fast engine:** backtests run in seconds (`scripts/run_backtest.py` for any strategy; see the Fast backtester section).
@@ -347,18 +349,36 @@ The bot is **not** an HTTP API server. External surfaces are:
   - 2025-01→2026-06: PF 1.95, +11.8%, 50 trades
   - rolling-start medians (the more reliable method): slightly *better* than 2.0× — speed of profit
     +1.75% vs +1.70% (DEV) and +1.99% vs +1.77% (OOS) per 30 days invested; OOS CAGR +5.7% vs +3.4%
-  - Kept under the thumb rule, but the margin is thin. **Not deployed to the live VPS**, which still runs 2.0×.
+  - Kept under the thumb rule, but the margin is thin. With the −10% stop (decision below), 1.5× is the live choice.
+- **DECISION 2026-10-11 (owner): live config = 1.5× volume + −10% first stop** (`HARD_STOP_PCT = 0.10`, was 0.07).
+  Volume × stop grid in `docs/TEST_RESULTS_2026_10.md`. Full 2021-09→2026-08 ₹50k run: **PF 1.26, +26.5%, 218 trades,
+  MaxDD −13.3%, bootstrap 79.9%** (1.5×/−7% was 1.04; 2.0×/−7% was 1.20). This overrides A1's strict rule: OOS is a tie
+  (1.93 vs 1.95). Position size is unchanged (the 20% cap still binds at 2% risk); a stopped trade loses about 2% of capital.
+  `tests/test_fast_engine.py` pins 0.07 and 2.0× for the oracle fixtures.
 - **October 2026 test batches** (`docs/TEST_RESULTS_2026_10.md`): the edge is fragile (2 of 5 years
   profitable, 28% chance of a 20% drawdown at ₹50k, start-date dependent). Partial profits, the RS
   gate, a −10% stop, B2 filters, faster exits and take-profits all failed pre-registered rules.
   - The 2026-07/08 validation numbers below came from the survivorship-biased `market_data.db` and are superseded.
-- Everything below this point describes AutoShare's history and live VPS deployment.
+- **Live-safety fixes, 2026-10-11 (PR #1, `1c83e69`; Phase 1 audit IDs C1/M2/H1; no strategy rule changed):**
+  - **C1:** `check_exits` raised `UnboundLocalError` on the first live trailing-stop raise. `total_shares` and `partial_sold`
+    were set only inside the `ENABLE_PARTIAL_PROFIT` branch, which has been off since 2026-08-10. The GTT stayed at −7% and
+    later positions went unchecked. Each position is now checked in its own try/except via `_check_position_exit`.
+  - **M2:** `update_gtt_stop_loss` places the new GTT before deleting the old one. On failure it keeps the old GTT and alerts.
+  - **H1:** in live mode, `get_available_cash` is capped at the bot's own cash (capital + realised P&L − invested) minus the
+    20% reserve. Before this, the owner's personal cash in the Zerodha account counted, so live could exceed the
+    backtest's 4-position ceiling. `_check_margin` and `get_account_value` still read the raw broker balance, which is correct.
+  - Regression tests: `tests/test_live_safety.py` (10 tests).
+  - **Not deployed.** The AutoShare repo the VPS runs (`6ca6d37`) still has all three bugs.
+- Test suite (2026-10-11): 262 passed, 2 skipped, **15 failed**. The 15 failures predate PR #1 and are all backtest tests
+  (`test_backtest.py` ×5, `test_reference_parity.py` ×9, `test_universe_churn.py` ×1). Causes: `reconstructed.db` is missing
+  under the conftest tmp dir, and the test passes a `use_panel` kwarg that `BacktestEngine` no longer accepts.
+- Everything below this point describes AutoShare's history and the live VPS deployment, which still runs old AutoShare code until the switch.
 
 **Phase: LIVE ₹50k Pilot (since 2026-07-20) — zero trades so far; machinery verified end-to-end through the risk gate on 2026-07-31**
 - **2026-08-08: pilot-scale re-validation PASSED** (`VALIDATION_2026_08.md`). ₹50k OOS PF **1.75**, bootstrap **84.7%**, MaxDD −4.35% vs **1.77** at ₹5L under the same cost model — cost drag at ₹6k positions costs ~0.02 PF. ₹1L OOS PF 1.84 / 89.3% (promotion reference). Dev window PF 1.19 (vs 1.23 at ₹5L) but bootstrap 73.4% and **MaxDD −19.78%, brushing the 20% halt**. Two backtest bugs fixed first: the drawdown halt is **absorbing** (fired 2022-02-14 then all 737 remaining days, killing 3 of 3.5 dev years — use `--no-dd-halt` to measure the underlying edge) and the cost model charged ₹20/side brokerage that CNC delivery does not incur (`--cost-model cnc`; ₹4,003 of a ₹5,085 "loss" was phantom cost). Control against goalpost-moving: the cost fix moved ₹5L OOS 1.73→1.77 but ₹50k 1.33→1.75, exactly the asymmetry a fixed fee predicts.
 - **Events filter verdict: KEEP** (OOS PF 1.75→2.22, removed 10 trades worth −₹1,051 net). But **live's filter is half dead** — its events table had zero `results` rows because the daily job only queries the corporate-actions endpoint; the "results ±7d" half has never fired live. Adding the board-meetings feed to `refresh_corporate_events` is pending sign-off (makes live stricter off a single-window result). Backtest reads `corporate_events_full.db` (69,648 rows) via `--events-db`; the live file is deliberately kept separate.
 - **2026-07-16: vcp_v2 passed out-of-sample validation** — dev PF 1.11 (224 trades), OOS PF 1.61 (43 trades), bootstrap edge confirmed 85.6%, max DD −4.4% in a 38%-BEAR-blocked window. Sole validated engine.
-- **Live VCP is now the two-stage pivot-watch flow** (`strategy/pivot_watch.py`, state in `data/.pivot_watchlist.json`): tight setup → pivot stored on 30-day watch → entry only on a valid breakout through the pivot. Mirrors `backtest_engine`'s vcp_v2 path — keep them in sync. No RS gate at watch-add (validated config has none) — **but this is misleading: `rank_setups` applies a hard RS ≥ 70 percentile drop to every confirmed breakout downstream, and the backtest has no RS gate anywhere. See `DIVERGENCE_INVENTORY.md` A1.**
+- **Live VCP is now the two-stage pivot-watch flow** (`strategy/pivot_watch.py`, state in `data/.pivot_watchlist.json`): tight setup → pivot stored on 30-day watch → entry only on a valid breakout through the pivot. Mirrors `backtest_engine`'s vcp_v2 path — keep them in sync. No RS gate at watch-add (validated config has none). The downstream RS ≥ 70 drop in `rank_setups` was removed 2026-08-10 (`DIVERGENCE_INVENTORY.md` A1).
 - momentum_v3 failed OOS (dev 0.99 → OOS 0.55): momentum family rejected and stays benched.
 
 - 134/134 tests pass as of 2026-07-14
@@ -494,8 +514,8 @@ print('Token obtained:', bool(auth.login_with_totp()))
 - Backtest results produced **before 2026-07-13** (including the diagnostic table below) came from the engine without these gates — treat them as signal-frequency upper bounds only.
 - ~~`scanner/stock_filter.py` corporate events filter... Backtest does not call this filter~~ **Fixed 2026-08-07:** backported behind `--events-filter` (buffers shared via `stock_filter.RESULTS_BUFFER_DAYS` / `OTHER_EVENT_BUFFER_DAYS`). **Validated 2026-08-08: KEEP** — ₹50k OOS PF 1.75 → 2.22, removed 10 trades worth −₹1,051 net. Caveat: one window, 10 trades; the dev-window pair was not run.
 - **OPEN — live's events filter is half dead.** Its table held **zero `results` rows** before 2026-08-07 because `refresh_corporate_events` only queries the corporate-actions endpoint, which carries no results dates; the "results ±7d" half has never fired live. The validated run used board-meeting results dates. Fix = add the board-meetings endpoint to the daily job (logic already in `scripts/backfill_events.py`). **Not done** — it tightens live off a single-window result and needs sign-off.
-- **OPEN — `DIVERGENCE_INVENTORY.md` A1: live-only RS ≥ 70 gate.** `rank_setups` drops any confirmed breakout below the 70th RS percentile; the backtest vcp_v2 path has no RS gate anywhere. Highest-frequency divergence — settle it the way the events filter was settled.
-- **OPEN — `DIVERGENCE_INVENTORY.md` B1: live books partial profits, backtest never does.** Live sells 33% at +20% and 33% at +30%; `backtest_engine` imports `check_partial_profit` and never calls it. Every published PF assumes winners ride to the trailing stop — exit geometry live does not use.
+- ~~**OPEN — `DIVERGENCE_INVENTORY.md` A1: live-only RS ≥ 70 gate.**~~ **CLOSED 2026-08-10:** the gate was removed from `rank_setups`. RS is still 35% of the composite score (see `docs/LIVE_BACKTEST_PARITY.md` #9). RS-gate variants failed the October 2026 test batch.
+- ~~**OPEN — `DIVERGENCE_INVENTORY.md` B1: live books partial profits, backtest never does.**~~ **CLOSED 2026-08-10:** `config.ENABLE_PARTIAL_PROFIT = False`, so both engines ride to the trailing stop. Turning it off exposed a crash, fixed 2026-10-11 (live-safety C1): `check_exits` used share counts that were set only inside the partial-profit branch.
 - ROE filter (`MIN_ROE_PCT=15%`) is **DISABLED since 2026-07-29** (`config.ENFORCE_MIN_ROE=False`): it was never part of the validated vcp_v2 ruleset and removed ~160 of the Nifty 500 from the live scan pond. Re-enable only after a backtest variant with the gate passes both validation windows.
 - **Mean reversion (Connors RSI-2): REJECTED and benched (2026-07-14).** The cost warning proved exact — 5-yr gated backtest PF 0.61 (−19.1%): 50% win rate but avg win +2.5% vs ~0.5% round-trip costs and −4% avg losses. Do not revive without a variant passing both backtest windows.
 - **Breakout strategy: REJECTED and benched (2026-07-14).** 5-yr gated backtest PF 0.69 (−15.6%); the old +8%/PF 1.09 bull-period result did not survive the honest engine. Same revival bar.
@@ -569,9 +589,9 @@ Same methodology at pilot capital, ₹6,000 floor, real CNC costs (`--cost-model
 | `WHOLE_STRATEGY.md` | Plain-language explainer for third parties — keep current (see note 0) |
 | `VALIDATION_2026_08.md` | Pilot-scale re-validation results (₹50k / ₹1L / ₹5L) |
 | `DUST_FLOOR_DECISION.md` | Real CNC cost math behind the ₹6,000 minimum-position floor |
-| `DIVERGENCE_INVENTORY.md` | Live-vs-backtest rule differences, severity-ranked (A1 RS gate + B1 partial profits are open) |
+| `DIVERGENCE_INVENTORY.md` | Live-vs-backtest rule differences, severity-ranked (A1 and B1 closed 2026-08-10; superseded by `docs/LIVE_BACKTEST_PARITY.md`) |
 | `GO_LIVE.md` | Live pilot runbook |
-| `docs/WINNING_STRATEGY.md` | Exit-plan study 2026-10-11: current exits vs my_strategy (sell 50% at +10%). Pre-registered portfolio test: **current exits stay**, my_strategy rejected (2025–26 PF 1.01 vs 1.75); 1%-risk/8-position setup earned ~0 |
+| `docs/WINNING_STRATEGY.md` | Exit-plan study 2026-10-11: current exits vs my_strategy (sell 50% at +10%). Pre-registered portfolio test: **current exits stay**, my_strategy rejected. At 2× volume the ₹50k PF was 1.40/1.75 vs 1.40/1.01 (2021–24 / 2025–26); the 1.5× re-run widened the gap to 1.56/1.93 vs 1.12/1.44. The 1%-risk/8-position setup lost money in 2021–24 |
 | `docs/TEST_PLAN_2026_10.md` / `docs/TEST_RESULTS_2026_10.md` | Pre-registered A–D test batch, 2026-10-11. Edge is fragile (2 of 5 years profitable, 28% chance of 20% DD); only breakout volume 1.5× passed; partial profits, RS gate, −10% stop, B2 filters all failed. Runner: `tools/run_test_plan_2026_10.py` |
 | `docs/XYZ_TRADE_EXAMPLE.md` | Plain-language ₹100 walk-through of both exit plans |
 | `TODO.md` / `ARCHITECTURE.md` / `DEPLOYMENT.md` | Backlog, design, VPS setup |

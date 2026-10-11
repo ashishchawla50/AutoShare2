@@ -116,7 +116,7 @@ def should_exit_on_stop(current_price: float, stop_price: float) -> bool:
 
 
 def calculate_hard_stop(entry_price: float) -> float:
-    """Return the initial hard stop loss price (7% below entry).
+    """Return the initial hard stop loss price (config.HARD_STOP_PCT below entry, 10% since 2026-10-11).
 
     Rounded to nearest 0.05 (NSE tick size).
     """

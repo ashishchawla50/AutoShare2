@@ -3,7 +3,7 @@
 > **Living document.** Plain-language explanation of everything the bot does,
 > written for a reader with zero share-market knowledge. Update this file
 > whenever the strategy, filters, sizing, or live status change (see the
-> changelog at the bottom). Last updated: **2026-08-11**.
+> changelog at the bottom). Last updated: **2026-10-11**.
 
 ---
 
@@ -21,8 +21,9 @@ ranked by **speed of profit**: net profit per day the money is in a trade (shown
 faster alternatives (shorter time stops, maximum holds of 5–10 days, take-profits
 at +3/+5/+10%, and the 4-day mean-reversion strategy) were tested on this rule.
 **None beat the current exits.** Selling sooner cut each trade's profit by more
-than it saved in days. The current strategy makes about +1.8–2.0% per 30 days
-invested, holding ~18 days per trade.
+than it saved in days. With today's settings (1.5× volume, −10% first stop) the
+strategy makes about +2.0–2.8% per 30 days invested, holding ~18–20 days per trade
+(medians over many start dates, 2021–24 and 2025–26).
 
 ---
 
@@ -79,8 +80,9 @@ event.
 bot only buys breakouts.
 
 **Stop-loss** — a pre-decided "I was wrong, get me out" price. Buy at ₹100
-with stop-loss ₹93: if the price falls to ₹93, you sell automatically and take
-a small 7% loss instead of hoping and riding it down 40%.
+with stop-loss ₹90: if the price falls to ₹90, you sell automatically and take
+a 10% loss instead of hoping and riding it down 40%. (The bot's first stop is
+10% below the buy price since 2026-10-11; it was 7% before.)
 
 **GTT order** — "Good Till Triggered." A stop-loss instruction stored **on
 Zerodha's servers**, not in the bot. Even if the bot's server catches fire,
@@ -281,9 +283,10 @@ think it managed ~₹5 lakh — its one real signal was sized 10× too big and
 blocked. Fixed and verified.)
 
 - Bot capital ₹50,000 → max acceptable loss per trade = **₹1,000**
-- Buy at ₹103.60, stop-loss at the pattern's low, say ₹94 → risking ₹9.60/share
-- ₹1,000 ÷ ₹9.60 ≈ 104 shares… but one position ≤ 20% of capital = ₹10,000 →
-  96 shares. Smaller number wins.
+- Buy at ₹103.60, first stop-loss 10% lower = ₹93.25 → risking ₹10.35/share
+- ₹1,000 ÷ ₹10.35 ≈ 96 shares, and one position ≤ 20% of capital = ₹10,000 →
+  96 shares. The two limits meet exactly at a 10% stop (2% ÷ 10% = 20%), so a
+  stopped-out trade loses about ₹1,000 (2% of capital).
 - Regime CAUTIOUS → everything halved again → ~48 shares (~₹5,000), risk ~₹460.
   *(Regime is BULL as of 2026-08-11, so sizing is currently full — the ~96
   share / ₹10,000 line above is what would actually be bought today.)*
@@ -293,7 +296,9 @@ Every trade has a small, pre-known, survivable worst case.
 
 ### After buying — the exits (all automatic)
 
-- **Stop-loss:** price hits the stop → sold, small loss, move on.
+- **Stop-loss:** price hits the stop (first stop 10% below the buy price) →
+  sold, loss of about 2% of capital, move on. The 10-day-average rule below
+  usually lifts the stop within a day or two, so few trades lose the full 10%.
 - **Trailing stop:** as price climbs, the stop ratchets up behind it — UP
   only, never back down. At ~+10% profit the stop reaches your buy price (the
   trade can no longer lose).
@@ -412,6 +417,23 @@ Extra rigor:
 
 ## Changelog
 
+- **2026-10-11** — **First stop widened from −7% to −10%, keeping 1.5× breakout volume
+  (owner decision).** All four combinations were tested (₹50k, full 2021-09 → 2026-08, real
+  costs):
+
+  | | 1.5× / −7% | **1.5× / −10% (chosen)** | 2.0× / −7% (old live) | 2.0× / −10% |
+  |---|---|---|---|---|
+  | Trades | 224 | **218** | 177 | 175 |
+  | PF / return | 1.04 / +4.3% | **1.26 / +26.5%** | 1.20 / +18.0% | 1.30 / +26.7% |
+  | Max drawdown | −15.7% | **−13.3%** | −19.1% | −16.3% |
+  | Speed per 30 days invested (2021–24 / 2025–26) | +1.75 / +1.99% | **+2.78 / +1.96%** | +1.70 / +1.77% | +2.12 / +1.74% |
+  | Days with no position | 42% | **41%** | 49% | 48% |
+
+  −10% was better than −7% at both volume levels and tied in 2025–26. Strictly it fails the
+  pre-registered "better in both periods" rule (test A1), so this is a deliberate override, made
+  on consistent evidence. Position size is unchanged (₹10,000 at ₹50k). A stopped trade now
+  loses about ₹1,000 instead of about ₹700. The edge is still fragile: bootstrap 79.9%, just
+  under the 80% bar.
 - **2026-10-11** — **Live-safety fixes from the Phase 1 audit (no strategy rule changed).**
   (1) The exit check crashed the first time a live trailing stop needed raising, because two
   share counts were only set when partial profits were on; the stop would have stayed at −7%
@@ -420,6 +442,8 @@ Extra rigor:
   placement never leaves a position without a stop. (3) Live "available cash" is now capped at
   the bot's own ₹50k-based cash minus the 20% reserve; before, the owner's personal cash in the
   same Zerodha account counted, so live could hold more and larger positions than the backtest.
+  *These fixes are in the AutoShare2 research code. As of 2026-10-11 they are **not yet deployed** to
+  the live bot. None of the bugs has fired, because the pilot has made zero trades.*
 - **2026-10-11** — **Thumb rule adopted as the ranking rule:** less % profit in fewer
   days beats more % in more days, measured as profit per day invested. A pre-registered
   test of 11 faster alternatives (docs/TEST_PLAN_2026_10C.md) found **the current exits

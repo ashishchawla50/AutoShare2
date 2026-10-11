@@ -94,8 +94,10 @@ def test_calculate_stop_loss_price():
 # ── Stop Loss Manager Tests ───────────────────────────────────────────────────
 
 def test_hard_stop_calculation():
+    from config.config import config
     stop = calculate_hard_stop(entry_price=1000.0)
-    assert stop == pytest.approx(930.0, abs=1.0)
+    assert stop == pytest.approx(1000.0 * (1 - config.HARD_STOP_PCT), abs=1.0)
+    assert config.HARD_STOP_PCT == 0.10   # live first stop since 2026-10-11
 
 
 def test_trailing_stop_breakeven_at_10pct():

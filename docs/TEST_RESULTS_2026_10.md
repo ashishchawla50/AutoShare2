@@ -13,7 +13,7 @@ drawdown halt off. DEV = 2021-09 → 2024-12, OOS = 2025-01 → 2026-06.
 
 | Test | Result | Action |
 |---|---|---|
-| A1 first stop −10% | **fail** (OOS PF 1.75 vs 1.78) | keep −7% |
+| A1 first stop −10% | **fail** (OOS PF 1.75 vs 1.78) | kept −7% then; **−10% adopted 2026-10-11 by owner override** (see "Volume × stop grid") |
 | A2 RS ≥ 70 filter | **fail** (OOS: 7 trades, PF 0.69) | stays removed |
 | A3 live partial profits | **fail** (DEV return +7.7% vs +22.1%) | keep `ENABLE_PARTIAL_PROFIT = False` |
 | B2a RS ≥ 41 | **fail** (DEV better, OOS identical) | not adopted |
@@ -217,3 +217,38 @@ Run after B3c was adopted, using the more reliable rolling-start method from Bat
 dates favour 1.5× on PF and on speed of profit (the thumb rule), and on OOS CAGR. 1.5× stays, as
 it passed rule R and is faster under the thumb rule. But the gap is within the noise that
 start-date dependence produces. It should not go live until live trades or fresh data confirm it.
+
+## Volume × stop grid and decision (2026-10-11)
+
+The owner asked for all four combinations of breakout volume (1.5× / 2.0×) and first stop
+(−7% / −10%). All runs use ₹50k, current exits, CNC costs and no drawdown halt. The −7% rows match
+the table above exactly. Rolling rows are medians over the same 11 DEV and 4 OOS start dates.
+
+| | 1.5× / −7% | **1.5× / −10%** | 2.0× / −7% | 2.0× / −10% |
+|---|---|---|---|---|
+| Full 2021-09→2026-08: trades | 224 | 218 | 177 | 175 |
+| Full: PF / return / CAGR | 1.04 / +4.3% / +0.9% | **1.26 / +26.5% / +4.9%** | 1.20 / +18.0% / +3.4% | **1.30 / +26.7% / +4.9%** |
+| Full: max DD / bootstrap | −15.7% / 54.6% | **−13.3%** / 79.9% | −19.1% / 70.8% | −16.3% / **82.0%** |
+| Full: days with a position / idle | 58% / 42% | **59% / 41%** | 51% / 49% | 52% / 48% |
+| Full: avg / median / max hold (trading days) | 11.9 / 11 / 81 | 12.8 / 12 / 81 | 12.2 / 11 / 77 | 13.1 / 12 / 77 |
+| Full: trades per month | 3.8 | 3.7 | 3.0 | 2.9 |
+| DEV split: PF / return | 1.32 / +25.4% | **1.56 / +44.9%** | 1.29 / +22.1% | 1.40 / +28.2% |
+| OOS split: PF / return | **1.95 / +11.8%** | 1.93 / +11.6% | 1.78 / +8.4% | 1.75 / +8.2% |
+| Rolling DEV: speed / CAGR / PF | +1.75% / +7.0% / 1.32 | **+2.78% / +14.2% / 1.56** | +1.70% / +7.4% / 1.28 | +2.12% / +9.0% / 1.39 |
+| Rolling OOS: speed / CAGR / PF | **+1.99% / +5.7% / 1.55** | +1.96% / +5.6% / 1.54 | +1.77% / +3.4% / 1.51 | +1.74% / +3.3% / 1.49 |
+
+**Decision (owner, 2026-10-11): 1.5× volume with a −10% first stop, for live.** −10% beats −7%
+at both volume levels on the full run, the DEV split and DEV rolling speed, and ties in OOS.
+1.5× beats 2.0× on speed and idle time, at the cost of a slightly lower full-run PF.
+
+Caveats, recorded at the time of the decision:
+- −10% still fails rule R strictly (OOS PF 1.93 vs 1.95). This is an override, not a pass.
+- The pick is the best of 4 combinations on the same data, which flatters it.
+- The full-run bootstrap is 79.9%, just under the 80% bar.
+- By entry year only 1 of 5 years (2022–2026) is profitable in every combination, so the edge
+  is still fragile.
+- A stopped trade now loses about 2% of capital instead of about 1.4%. Position size is
+  unchanged, because at 2% risk the 20% cap still binds.
+
+`config.HARD_STOP_PCT` is now 0.10. `tests/test_fast_engine.py` pins 0.07 (and 2.0×) because the
+oracle fixtures were captured at those values.

@@ -98,12 +98,44 @@ Costs (STT, stamp duty, and ₹16 per sell order) are about ₹40 per ₹10,000 
 sells twice, so it pays the ₹16 sell charge twice.
 
 **In short:** the **current exits** lose less on failures (B), stay out of dead trades (D), and
-keep the most from a big run (A). **my_strategy** cashes in more often (C) and wins 57% of trades
-against 39%. In testing, both earned about the same overall.
+keep the most from a big run (A). **my_strategy** cashes in more often (C) and wins more trades.
+In the full portfolio test at today's 1.5× volume rule, the **current exits earned far more**
+(see below).
 
 ---
 
-## Test results (summary — details in WINNING_STRATEGY.md)
+## Latest result: full portfolio test at 1.5× volume (today's rule)
+
+₹50,000, 2% risk, 20% positions (4 at once), both plans with a ₹90 (−10%) first stop, real costs.
+Re-run 2026-10-11 after the volume rule changed to 1.5×.
+
+| | Current exits | my_strategy |
+|---|---|---|
+| **2021–24:** trades / win rate | 153 / 40% | 107 / 54% |
+| **2021–24:** PF / return / CAGR | **1.56 / +44.9% / +11.8%** | 1.12 / +7.9% / +2.3% |
+| **2021–24:** worst drawdown | **−11.9%** | −13.9% |
+| **2025–26:** trades / win rate | 50 / 46% | 35 / 60% |
+| **2025–26:** PF / return / CAGR | **1.93 / +11.6% / +7.7%** | 1.44 / +7.6% / +5.0% |
+| **2025–26:** worst drawdown | **−4.8%** | −6.2% |
+| Speed of profit (per 30 days invested), 2021–24 / 2025–26 | **+2.78% / +2.88%** | +0.38% / +1.19% |
+| Average days held (calendar) | **19–21** | 45–48 |
+| Days with no position | 34–49% | **18–31%** |
+
+**The current exits win clearly.** They have the higher PF and return in both periods, and they
+make profit about 2–7 times faster per rupee-day. my_strategy wins more often, but its long holds
+fill the 4 slots, so it takes a third fewer trades.
+
+At ₹1 lakh with 8 smaller positions (1% risk, 10% each), both plans **lost money** in 2021–24
+(PF 0.97 and 0.92). So at ₹1 lakh, keep 2% risk with 20% positions (200 XYZ shares).
+
+The 1.5× rule finds more breakouts than 2× did. The current exits used those extra signals well;
+my_strategy did not, because its slots were already full.
+
+---
+
+## Earlier results at 2× volume (before 2026-10-11's change; kept for the record)
+
+### Per-signal study (each signal as its own trade)
 
 | | Current exits | my_strategy |
 |---|---|---|
@@ -115,7 +147,7 @@ against 39%. In testing, both earned about the same overall.
 
 PF = money made on winners divided by money lost on losers.
 
-### How many trades, and how many days, over Sept 2021 → June 2026
+### How many trades, and how many days, over Sept 2021 → June 2026 (slot simulation, 2×)
 
 At ₹90 stop each XYZ-style position is 20% of capital, so **4 positions fit at once**. A signal
 arriving while all 4 are full is skipped.
@@ -131,7 +163,7 @@ arriving while all 4 are full is skipped.
 With 8 smaller positions (10% each) the order flips: the current exits take 219 trades
 for about +26%, and my_strategy takes 154 trades for about +20%.
 
-### Full portfolio test result (2026-10-11): current exits win
+### Full portfolio test at 2× (2026-10-11): current exits win
 
 ₹50,000, 2% risk, both plans with a ₹90 first stop:
 
@@ -155,8 +187,11 @@ is hit by normal noise about 72% of the time before the price reaches ₹104.
 
 ## Important notes
 
-- **The live bot today is different from both plans.** It starts with a ₹93 stop (−7%), and it
-  also sells 33% at +20% and 33% at +30%. The backtest never sells part of a position
-  (DIVERGENCE_INVENTORY.md, item B1).
-- **The full portfolio test kept the current exits;** my_strategy was rejected. The weak point of
-  the strategy is which breakouts it buys, not how it sells.
+- **The bot's first stop is ₹90 (−10%) since 2026-10-11**, the same as in these tests. It was
+  ₹93 (−7%) before. At 1.5×, ₹90 did better than ₹93 in 2021–24 (PF 1.56 vs 1.32) and tied in
+  2025–26 (1.93 vs 1.95), and it was better over the whole 2021–26 run (PF 1.26 vs 1.04).
+  The owner adopted it, overriding the strict pre-registered rule.
+- **Partial profit booking is off** in the live bot (since 2026-08-10), so live sells 100% at once,
+  like the current exits.
+- **Both portfolio tests kept the current exits** (at 2× and at 1.5×); my_strategy is rejected.
+  The weak point of the strategy is which breakouts it buys, not how it sells.
