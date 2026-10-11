@@ -211,9 +211,30 @@ mypy .
 # Manual strategy scan (no scheduler, one-off)
 python scripts/manual_scan.py
 
-# Run backtest
+# Run backtest — FAST (use this; seconds, local, identical results to the reference)
+python scripts/fast_backtest.py                                   # full 2021-09 → 2026-08, ₹50k, CNC costs
+python scripts/fast_backtest.py --start 2025-01-01 --end 2026-06-30
+python scripts/fast_backtest.py --start 2021-06-01 --end 2024-12-31 --no-dd-halt --dump-trades dev.csv
+
+# Prove the fast engine still matches the frozen reference fixtures (~10 s)
+pytest tests/test_fast_engine.py
+
+# Run backtest — slow reference engine (hours; only to capture new oracle fixtures)
 python scripts/run_backtest.py
 ```
+
+### Fast backtester (`backtest/fast/`, added 2026-10-11 in AutoShare2)
+
+All backtesting is local. `backtest/fast/` replays vcp_v2 on `data/reconstructed.db` in
+~2.5 s for the full 5-year window (reference engine: 3.4 h).
+
+- `data.py` loads every OHLCV row into flat numpy arrays (cached in `data/cache/fast/`, keyed on the dataset fingerprint).
+- `signals.py` precomputes `analyse_stock`'s scan verdict (trend template, VCP, tightness, pivot) for every row of every security. The trend template is vectorised and the VCP check runs under numba. This is possible because the scan depends only on the stock's own history, never on the portfolio.
+- `engine.py` is the portfolio loop. Python touches only universe members with a pending pivot or a fresh setup; all other rejections are counted in bulk.
+- **Correctness proof:** `tests/test_fast_engine.py` reproduces all six frozen oracle fixtures exactly: every trade field, every funnel counter and final capital to 1e-6.
+- **Any change to strategy rules must be made in both engines,** or the reference re-captured (`tools/capture_reference_oracle.py`). A fast engine that no longer matches the oracle is wrong until proven otherwise.
+- **Warm-up difference:** indicators seed from each security's first row. That equals the reference for any start on or before 2023-06-01; later starts get a better-warmed EMA here than the reference would compute.
+- Caches rebuild automatically when `reconstructed.db` or `signals.py` changes (`--rebuild-cache` forces it).
 
 ---
 
@@ -298,6 +319,16 @@ The bot is **not** an HTTP API server. External surfaces are:
 ---
 
 ## Current Development Status
+
+**AutoShare2 (2026-10-11): restart of AutoShare, research-first and local-only.**
+- **Base:** code from AutoShare `3a727c6`, which is the validated `b218e83` engine plus the August reconstructed-dataset work.
+- **Do not use AutoShare `6ca6d37` ("old code", 2026-10-11).** It gutted `backtest_engine.py`: vcp_v2 deleted, regime gate hardcoded BULL, 4-stock fallback universe. It also rewrote config: `MAX_POSITIONS` 5, `MAX_DRAWDOWN_PCT` 0.05, mean reversion un-benched. Those four files were restored from `3a727c6`.
+- **Fast engine:** backtests now run in seconds (`scripts/fast_backtest.py`; see the Fast backtester section).
+- **vcp_v2 on the honest dataset** (reconstructed, ₹50k, CNC):
+  - full 2021-09→2026-08: PF 1.20, 177 trades, bootstrap 70.8%, **edge NOT confirmed**;
+  - 2025-01→2026-06: PF 1.78, 39 trades.
+  - The 2026-07/08 validation numbers below came from the survivorship-biased `market_data.db` and are superseded.
+- Everything below this point describes AutoShare's history and live VPS deployment.
 
 **Phase: LIVE ₹50k Pilot (since 2026-07-20) — zero trades so far; machinery verified end-to-end through the risk gate on 2026-07-31**
 - **2026-08-08: pilot-scale re-validation PASSED** (`VALIDATION_2026_08.md`). ₹50k OOS PF **1.75**, bootstrap **84.7%**, MaxDD −4.35% vs **1.77** at ₹5L under the same cost model — cost drag at ₹6k positions costs ~0.02 PF. ₹1L OOS PF 1.84 / 89.3% (promotion reference). Dev window PF 1.19 (vs 1.23 at ₹5L) but bootstrap 73.4% and **MaxDD −19.78%, brushing the 20% halt**. Two backtest bugs fixed first: the drawdown halt is **absorbing** (fired 2022-02-14 then all 737 remaining days, killing 3 of 3.5 dev years — use `--no-dd-halt` to measure the underlying edge) and the cost model charged ₹20/side brokerage that CNC delivery does not incur (`--cost-model cnc`; ₹4,003 of a ₹5,085 "loss" was phantom cost). Control against goalpost-moving: the cost fix moved ₹5L OOS 1.73→1.77 but ₹50k 1.33→1.75, exactly the asymmetry a fixed fee predicts.

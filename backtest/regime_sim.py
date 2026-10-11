@@ -46,6 +46,7 @@ def build_regime_series(
     ohlcv_by_symbol: dict[str, pd.DataFrame],
     nifty_df: pd.DataFrame,
     trading_days: list[date],
+    breadth: pd.Series | None = None,
 ) -> dict[date, tuple[str, float]]:
     """Build a per-day regime mapping for the backtest period.
 
@@ -53,6 +54,8 @@ def build_regime_series(
         ohlcv_by_symbol: Symbol → OHLCV DataFrame (date-indexed), used for breadth.
         nifty_df:        Nifty 50 OHLCV with enough warmup history for EMA200.
         trading_days:    Backtest trading days (ascending).
+        breadth:         Precomputed breadth on the Nifty index (fast engine);
+                         when given, ohlcv_by_symbol is ignored.
 
     Returns:
         Dict mapping trading day → (regime_name, position_size_multiplier).
@@ -66,17 +69,18 @@ def build_regime_series(
 
     # Breadth: fraction of universe stocks above their own 200-day EMA,
     # aligned on the Nifty's date index
-    above_flags = {}
-    for symbol, df in ohlcv_by_symbol.items():
-        close = df["close"].astype(float)
-        if len(close) < 200:
-            continue
-        ema200 = close.ewm(span=200, adjust=False, min_periods=200).mean()
-        above_flags[symbol] = (close > ema200).reindex(nifty_close.index)
-    if above_flags:
-        breadth = pd.DataFrame(above_flags).mean(axis=1, skipna=True).fillna(0.5)
-    else:
-        breadth = pd.Series(0.5, index=nifty_close.index)  # neutral when no data
+    if breadth is None:
+        above_flags = {}
+        for symbol, df in ohlcv_by_symbol.items():
+            close = df["close"].astype(float)
+            if len(close) < 200:
+                continue
+            ema200 = close.ewm(span=200, adjust=False, min_periods=200).mean()
+            above_flags[symbol] = (close > ema200).reindex(nifty_close.index)
+        if above_flags:
+            breadth = pd.DataFrame(above_flags).mean(axis=1, skipna=True).fillna(0.5)
+        else:
+            breadth = pd.Series(0.5, index=nifty_close.index)  # neutral when no data
 
     # Raw daily classification (VIX-less _classify)
     price_gap_pct = (nifty_close - nifty_ema200) / nifty_ema200

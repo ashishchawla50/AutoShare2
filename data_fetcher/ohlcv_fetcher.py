@@ -1,7 +1,9 @@
-"""Fetch and cache OHLCV data from free sources (Yahoo Finance) or Zerodha Kite Connect.
+"""Fetch and cache OHLCV data from Zerodha Kite Connect.
 
-Primary source: yfinance (Free) if Kite is absent.
+Primary source: Kite Connect historical API.
+Cross-validation: nsepy for suspicious candles.
 All data is persisted in market_data.db to avoid redundant API calls.
+Rate limited to Kite's 200 historical calls/minute limit.
 """
 
 from __future__ import annotations
@@ -25,10 +27,15 @@ from utils.indicator_utils import normalize_ohlcv_columns
 logger = logging.getLogger("data.ohlcv")
 
 _KITE_INTERVAL_DAY = "day"
-_REQUEST_GAP = 60 / config.KITE_HISTORICAL_RATE_LIMIT
+_REQUEST_GAP = 60 / config.KITE_HISTORICAL_RATE_LIMIT  # seconds per request
+
 
 class OHLCVFetcher:
-    """Manages OHLCV data fetching, caching, and validation."""
+    """Manages OHLCV data fetching, caching, and validation.
+
+    Args:
+        kite: An authenticated KiteConnect instance (or None for paper mode).
+    """
 
     def __init__(self, kite=None) -> None:
         self._kite = kite
@@ -50,7 +57,18 @@ class OHLCVFetcher:
         days: int = 500,
         force_refresh: bool = False,
     ) -> Optional[pd.DataFrame]:
-        """Return OHLCV DataFrame for a symbol, using cache or free sources when available."""
+        """Return OHLCV DataFrame for a symbol, using cache when available.
+
+        Args:
+            symbol:           NSE trading symbol.
+            instrument_token: Kite instrument token for the symbol.
+            days:             Number of calendar days of history to fetch.
+            force_refresh:    Bypass cache and fetch fresh data.
+
+        Returns:
+            DataFrame with DatetimeIndex and columns [open, high, low, close, volume],
+            or None if data cannot be fetched.
+        """
         cached = self._load_from_cache(symbol)
 
         if not force_refresh and cached is not None:
@@ -59,24 +77,19 @@ class OHLCVFetcher:
             today = date.today()
             days_missing = (today - last_date).days - 1
             expected_start = today - timedelta(days=days)
+            # Cache is valid only if: data is current AND covers far enough back.
+            # Without the second check, a 730-day cache blocks a 1500-day backfill
+            # because days_missing==0 triggers an early return before older data is fetched.
             if days_missing <= 0 and first_date <= expected_start + timedelta(days=30):
                 return cached
 
-        # Try fetching from active Kite API if available; otherwise use Free yfinance path
-        if self._kite is not None:
-            fresh = self._fetch_from_kite(symbol, instrument_token, days)
-        else:
-            fresh = self._fetch_from_yfinance(symbol, days)
-
+        fresh = self._fetch_from_kite(symbol, instrument_token, days)
         if fresh is not None:
             self._save_to_cache(symbol, fresh)
             issues = flag_data_anomalies(symbol, fresh)
             if issues:
-                try:
-                    from alerts.telegram_alert import send_data_anomaly
-                    send_data_anomaly(symbol, "; ".join(issues))
-                except ImportError:
-                    pass
+                from alerts.telegram_alert import send_data_anomaly
+                send_data_anomaly(symbol, "; ".join(issues))
             return fresh
 
         if cached is not None:
@@ -85,54 +98,6 @@ class OHLCVFetcher:
 
         return None
 
-    def _fetch_from_yfinance(self, symbol: str, days: int) -> Optional[pd.DataFrame]:
-        """Fetch historical data for free using Yahoo Finance API wrapper."""
-        import yfinance as yf
-        
-        # Convert NSE standard tracker to Yahoo formatting (e.g. GOLDBEES -> GOLDBEES.NS)
-        yf_symbol = symbol if symbol.endswith((".NS", ".BO")) else f"{symbol}.NS"
-        
-        end_date = date.today()
-        start_date = end_date - timedelta(days=days)
-        
-        logger.info("Fetching free data from yfinance for %s (%s to %s)", symbol, start_date, end_date)
-        try:
-            ticker = yf.Ticker(yf_symbol)
-            df = ticker.history(start=start_date, end=end_date, interval="1d")
-            if df.empty:
-                # Fallback for index tokens like NIFTY 50
-                if symbol in ("NIFTY50", "NIFTY 50"):
-                    df = yf.Ticker("^NSEI").history(start=start_date, end=end_date, interval="1d")
-            
-            if df.empty:
-                logger.warning("No data found on yfinance for ticker %s", yf_symbol)
-                return None
-                
-            df.reset_index(inplace=True)
-            df.rename(
-                columns={"Date": "date", "Open": "open", "High": "high",
-                         "Low": "low", "Close": "close", "Volume": "volume"},
-                inplace=True,
-            )
-            df["date"] = pd.to_datetime(df["date"]).dt.tz_localize(None)
-            df.set_index("date", inplace=True)
-            df = ensure_datetime_index(df)
-            
-            # 🔥 THE CRITICAL FIX: Drop empty/corrupt holiday or non-trading NaN rows before caching
-            df.dropna(subset=["open", "high", "low", "close"], inplace=True)
-            
-            if df.empty:
-                logger.warning("All fetched rows for %s contained NaN prices.", symbol)
-                return None
-
-            df = df[["open", "high", "low", "close", "volume"]].astype(
-                {"open": float, "high": float, "low": float, "close": float, "volume": int}
-            )
-            return df
-        except Exception as exc:
-            logger.error("yfinance download extraction failed for %s: %s", symbol, exc)
-            return None
-
     def _fetch_from_kite(
         self,
         symbol: str,
@@ -140,6 +105,10 @@ class OHLCVFetcher:
         days: int,
     ) -> Optional[pd.DataFrame]:
         """Fetch OHLCV directly from Kite Connect historical API."""
+        if self._kite is None:
+            logger.debug("Kite not connected — cannot fetch %s", symbol)
+            return None
+
         end_date = date.today()
         start_date = end_date - timedelta(days=days)
 
@@ -158,6 +127,7 @@ class OHLCVFetcher:
             return None
 
         if not records:
+            logger.warning("Empty data returned from Kite for %s", symbol)
             return None
 
         df = pd.DataFrame(records)
@@ -171,6 +141,7 @@ class OHLCVFetcher:
         df = df[["open", "high", "low", "close", "volume"]].astype(
             {"open": float, "high": float, "low": float, "close": float, "volume": int}
         )
+        logger.info("Fetched %d rows from Kite for %s", len(df), symbol)
         return df
 
     def _load_from_cache(self, symbol: str) -> Optional[pd.DataFrame]:
@@ -201,10 +172,10 @@ class OHLCVFetcher:
         """Upsert OHLCV rows into the SQLite cache."""
         rows = df.reset_index()
         rows["symbol"] = symbol.upper()
-        source_name = "yfinance" if self._kite is None else "kite"
-        rows["source"] = source_name
+        rows["source"] = "kite"
         rows["validated"] = True
         rows["updated_at"] = datetime.now()
+        rows.rename(columns={"date": "date"}, inplace=True)
 
         with self._engine.begin() as conn:
             for _, row in rows.iterrows():
@@ -222,7 +193,7 @@ class OHLCVFetcher:
                         "l": float(row["low"]),
                         "c": float(row["close"]),
                         "v": int(row["volume"]),
-                        "src": source_name,
+                        "src": "kite",
                         "val": 1,
                         "upd": datetime.now(),
                     },
@@ -233,7 +204,15 @@ class OHLCVFetcher:
         symbol_token_map: dict[str, int],
         days: int = 500,
     ) -> dict[str, pd.DataFrame]:
-        """Fetch OHLCV for multiple symbols with rate limiting."""
+        """Fetch OHLCV for multiple symbols with rate limiting.
+
+        Args:
+            symbol_token_map: Dict mapping symbol → instrument_token.
+            days:             Days of history per symbol.
+
+        Returns:
+            Dict mapping symbol → OHLCV DataFrame (missing symbols omitted).
+        """
         result: dict[str, pd.DataFrame] = {}
         total = len(symbol_token_map)
         for i, (symbol, token) in enumerate(symbol_token_map.items()):
@@ -242,4 +221,5 @@ class OHLCVFetcher:
                 result[symbol] = df
             if (i + 1) % 20 == 0:
                 logger.info("OHLCV progress: %d/%d symbols fetched", i + 1, total)
+        logger.info("Bulk OHLCV complete: %d/%d symbols available", len(result), total)
         return result

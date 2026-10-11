@@ -58,3 +58,6 @@ Thumbs.db
 .vscode/
 *.iml
 __pycache__/
+
+# ── Fast-backtest array caches (regenerated from reconstructed.db) ───────────
+data/cache/
