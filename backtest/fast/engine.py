@@ -99,6 +99,7 @@ class FastBacktestEngine:
         slippage: float = 0.0,
         caution_full_size: bool = False,
         entry_filter=None,
+        take_profit: float = 0.0,
     ) -> None:
         """Research options (all off by default, so the oracle path is untouched):
         exit_mode     "my_strategy" / "vcp_partials" (see _my_exit / _live_partials)
@@ -106,6 +107,8 @@ class FastBacktestEngine:
         caution_full_size  trade CAUTIOUS days at full size instead of the regime's half
         entry_filter  callable(engine, slot, p_row, ti, pend) -> bool, asked for every
                       confirmed breakout; False drops it (its pivot is consumed)
+        take_profit   sell everything when the day's high reaches entry x (1 + take_profit),
+                      filled at that price (or the open, if it gaps above); 0 = off
         """
         if exit_mode not in EXIT_MODES:
             raise ValueError(f"exit_mode must be one of {EXIT_MODES}")
@@ -113,6 +116,7 @@ class FastBacktestEngine:
         self._slip = slippage
         self._caution_full = caution_full_size
         self._entry_filter = entry_filter
+        self._tp = take_profit
         self.start_date = start_date
         self.end_date = end_date
         self.starting_capital = starting_capital
@@ -313,6 +317,10 @@ class FastBacktestEngine:
         """Non-stop exit for an open position on row r: (fill, reason) or None."""
         if self._exit_mode == "my_strategy":
             return self._my_exit(slot, p, r, ti)
+        if self._tp:
+            target = p.entry_price * (1 + self._tp)
+            if float(self._md.high[r]) >= target:
+                return max(target, float(self._md.open[r])), "take_profit"
         hit = self._vcp_exit(slot, p, r, ti)
         if hit is None and self._exit_mode == "vcp_partials":
             self._live_partials(p, r)

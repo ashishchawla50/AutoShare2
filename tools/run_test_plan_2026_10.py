@@ -327,5 +327,81 @@ def b2():
     save("b2", res)
 
 
+# ── Batch B: faster trades (docs/TEST_PLAN_2026_10B.md) ───────────────────────
+
+DEV_STARTS = [date(y, m, 1) for y in range(2021, 2025) for m in (3, 6, 9, 12)
+              if date(2021, 9, 1) <= date(y, m, 1) <= date(2024, 3, 1)]
+OOS_STARTS = [date(2025, 1, 1), date(2025, 4, 1), date(2025, 7, 1), date(2025, 10, 1)]
+
+
+def rolling(starts, end, engine_cls=None, **opts):
+    from backtest.fast.rule_engine import FastRuleEngine
+    rows = []
+    for s in starts:
+        if engine_cls is FastRuleEngine:
+            e = FastRuleEngine(start_date=s, end_date=end, starting_capital=50_000.0, dd_halt=False,
+                               market=MD, signals=signals(), universe=UNI, verbose=False, **opts)
+        else:
+            e = FastBacktestEngine(start_date=s, end_date=end, starting_capital=50_000.0,
+                                   dd_halt=False, market=MD, signals=signals(), universe=UNI,
+                                   verbose=False, **opts)
+        m = e.run()
+        days = [(t["exit_date"] - t["entry_date"]).days for t in e._closed_trades]
+        rows.append({"cagr": m.cagr_pct, "pf": m.profit_factor if m.total_trades else 0.0,
+                     "dd": m.max_drawdown_pct, "trades": m.total_trades,
+                     "days": float(np.mean(days)) if days else 0.0})
+    df = pd.DataFrame(rows)
+    return {"cagr": float(df.cagr.median()), "pf": float(df.pf.median()), "dd": float(df.dd.median()),
+            "trades": float(df.trades.median()), "days": float(df.days.median()),
+            "cagr_all": [round(x, 2) for x in df.cagr]}
+
+
+def fast():
+    res = {}
+    cands = {
+        "baseline": ({}, {}),
+        "F1 time stop 10d": ({"TIME_STOP_DAYS": 10}, {}),
+        "F2 day 5+, exit if < +2%": ({"TIME_STOP_DAYS": 5, "TIME_STOP_MIN_PROFIT_PCT": 0.02}, {}),
+        "F3 take profit +10%": ({}, {"take_profit": 0.10}),
+        "F4 take profit +5%": ({}, {"take_profit": 0.05}),
+        "F5 F2 + F3": ({"TIME_STOP_DAYS": 5, "TIME_STOP_MIN_PROFIT_PCT": 0.02}, {"take_profit": 0.10}),
+    }
+    print(f"{'candidate':28s} | {'DEV med CAGR':>12s} {'PF':>5s} {'DD':>6s} {'days':>5s} {'trades':>6s} | "
+          f"{'OOS med CAGR':>12s} {'PF':>5s} {'days':>5s} {'trades':>6s}")
+    for name, (over, opts) in cands.items():
+        with cfg(HARD_STOP_PCT=0.07, **over):
+            d = rolling(DEV_STARTS, DEV[1], **opts)
+            o = rolling(OOS_STARTS, OOS[1], **opts)
+        res[name] = {"dev": d, "oos": o}
+        print(f"{name:28s} | {d['cagr']:+11.1f}% {d['pf']:5.2f} {d['dd']:+5.1f}% {d['days']:5.1f} {d['trades']:6.0f} | "
+              f"{o['cagr']:+11.1f}% {o['pf']:5.2f} {o['days']:5.1f} {o['trades']:6.0f}")
+    b = res["baseline"]
+    print("\nRule R2:")
+    for name, r in res.items():
+        if name == "baseline":
+            continue
+        d, o = r["dev"], r["oos"]
+        higher = d["cagr"] > b["dev"]["cagr"] and o["cagr"] > b["oos"]["cagr"]
+        tie = (abs(d["cagr"] - b["dev"]["cagr"]) <= 0.5 and abs(o["cagr"] - b["oos"]["cagr"]) <= 0.5
+               and d["days"] <= 0.8 * b["dev"]["days"] and o["days"] <= 0.8 * b["oos"]["days"])
+        sound = d["pf"] > 1 and o["pf"] > 1 and d["dd"] > -20
+        ok = (higher or tie) and sound
+        r["pass"] = ok
+        print(f"  {name:28s} CAGR higher both: {higher} | fast tie-break: {tie} | PF>1 & DD ok: {sound} "
+              f"-> {'PASSES' if ok else 'fails'}")
+
+    print("\nContext — rule strategies, same rolling starts (no adoption):")
+    from backtest.fast.rule_engine import FastRuleEngine
+    from backtest.fast.rules import load_rule_signals
+    rules = load_rule_signals(MD)
+    for strat in ("mean_reversion", "momentum", "momentum_v2", "breakout", "breakout_v2"):
+        d = rolling(DEV_STARTS, DEV[1], FastRuleEngine, strategy=strat, rules=rules)
+        o = rolling(OOS_STARTS, OOS[1], FastRuleEngine, strategy=strat, rules=rules)
+        res[f"ctx {strat}"] = {"dev": d, "oos": o}
+        print(f"  {strat:26s} | DEV CAGR {d['cagr']:+6.1f}% PF {d['pf']:4.2f} days {d['days']:4.1f} | "
+              f"OOS CAGR {o['cagr']:+6.1f}% PF {o['pf']:4.2f} days {o['days']:4.1f}")
+    save("fast", res)
+
+
 if __name__ == "__main__":
-    {"groupA": group_a, "groupC": group_c, "b1": b1, "b3": b3, "b2": b2}[sys.argv[1]]()
+    {"groupA": group_a, "groupC": group_c, "b1": b1, "b3": b3, "b2": b2, "fast": fast}[sys.argv[1]]()
