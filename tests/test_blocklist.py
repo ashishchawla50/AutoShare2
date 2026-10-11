@@ -1,7 +1,7 @@
 """The manual blocklist must keep the owner's personal holdings out of the bot.
 
 data/manual_blocklist.txt lists symbols the owner holds by hand (JIOFIN,
-SILVERBEES, SILVERIETF, HDFCGOLD as of 2026-07-17). The bot must never buy
+SILVERBEES, SILVERIETF, HDFCGOLD from 2026-07-17; seven more added 2026-10-12). The bot must never buy
 them. It can't sell them either, because every sell path only acts on the
 bot's own ledger, and the buy gate is what keeps them out of that ledger.
 """

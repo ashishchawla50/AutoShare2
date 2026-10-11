@@ -24,7 +24,7 @@
 ## Pre-flight checklist
 
 - [x] ₹50,101 in the Zerodha account, verified via the bot's own Kite session; TOTP login rehearsed successfully *(2026-07-19 evening)*
-- [x] Personal holdings blocklisted: JIOFIN, SILVERBEES, SILVERIETF, HDFCGOLD *(2026-07-17; full order-path audit passed 2026-07-19)*
+- [x] Personal holdings blocklisted: JIOFIN, SILVERBEES, SILVERIETF, HDFCGOLD *(2026-07-17; full order-path audit passed 2026-07-19)*; plus COALINDIA, HDFCBANK, HEROMOTOCO, IEX, MUTHOOTFIN, RELIANCE, SBIN *(2026-10-12, after a holdings check; EDELWEISS and GOLDBEES are held but outside the Nifty 500 universe)*
 - [x] TOTP auto-login confirmed ON by Ashish *(2026-07-19)*
 - [x] `validate_setup.py` — ALL CHECKS PASSED on VPS *(2026-07-19; Python floor set to the proven 3.10 runtime)*
 - [x] Latest `main` deployed AND bot restarted
