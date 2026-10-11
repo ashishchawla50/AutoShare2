@@ -7,6 +7,8 @@ data/.last_heartbeat
 
 # ── Personal / local config (not for version control) ────────────────────────
 data/manual_blocklist.txt
+data/.regime_upgrade_state
+data/.pivot_watchlist.json
 
 # ── Databases (runtime state, regenerated automatically) ─────────────────────
 *.db
@@ -64,3 +66,6 @@ data/cache/
 
 # test-plan runner output (regenerate with tools/run_test_plan_2026_10.py)
 data/test_plan_2026_10/
+
+# extended dataset (local research copy, rebuilt from NSE archive)
+data_extended/
