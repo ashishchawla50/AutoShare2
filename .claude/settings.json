@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile risk/position_sizer.py risk/drawdown_monitor.py risk/risk_manager.py exit/stop_loss_manager.py exit/profit_manager.py exit/time_stop.py portfolio/pnl_calculator.py portfolio/portfolio_tracker.py)",
+      "Bash(pip install *)",
+      "Bash(ssh -i \"c:\\\\Users\\\\Ashish\\\\Documents\\\\Claude\\\\AutoShare\\\\ssh-key-2026-06-28.key\" -o StrictHostKeyChecking=no ubuntu@152.67.10.33 \"cd ~/AutoShare && ~/AutoShare/venv/bin/python3 scripts/run_backtest.py --start 2021-06-01 --end 2026-06-30 --capital 500000 2>&1\")",
+      "Bash(ssh -i \"c:\\\\Users\\\\Ashish\\\\Documents\\\\Claude\\\\AutoShare\\\\ssh-key-2026-06-28.key\" -o StrictHostKeyChecking=no ubuntu@152.67.10.33 \"pkill -f run_backtest.py 2>/dev/null; echo done\")",
+      "PowerShell(ssh -i \"c:\\\\Users\\\\Ashish\\\\Documents\\\\Claude\\\\AutoShare\\\\ssh-key-2026-06-28.key\" -o StrictHostKeyChecking=no ubuntu@152.67.10.33 \"pkill -f run_backtest.py; echo killed_done\")",
+      "Bash(python -m pytest -q)",
+      "Bash(ssh -i \"c:\\\\Users\\\\Ashish\\\\Documents\\\\Claude\\\\AutoShare\\\\ssh-key-2026-06-28.key\" -o StrictHostKeyChecking=no ubuntu@152.67.10.33 \"cd ~/AutoShare && git pull origin main && echo PULLED\")",
+      "Bash(ssh -i \"c:\\\\Users\\\\Ashish\\\\Documents\\\\Claude\\\\AutoShare\\\\ssh-key-2026-06-28.key\" -o StrictHostKeyChecking=no ubuntu@152.67.10.33 \"cd ~/AutoShare && nohup ~/AutoShare/venv/bin/python3 scripts/run_backtest.py --start 2021-06-01 --end 2026-06-30 --capital 500000 --strategy vcp > /tmp/bt_vcp.log 2>&1 & echo VCP_PID:$!\")",
+      "Bash(ssh -i \"c:\\\\Users\\\\Ashish\\\\Documents\\\\Claude\\\\AutoShare\\\\ssh-key-2026-06-28.key\" -o StrictHostKeyChecking=no ubuntu@152.67.10.33 'cd ~/AutoShare && nohup ~/AutoShare/venv/bin/python3 scripts/run_backtest.py --start 2021-06-01 --end 2026-06-30 --capital 500000 --strategy vcp > /tmp/bt_vcp.log 2>&1 & echo \"VCP_PID:$!\"')",
+      "Bash(ssh -i \"c:\\\\Users\\\\Ashish\\\\Documents\\\\Claude\\\\AutoShare\\\\ssh-key-2026-06-28.key\" -o StrictHostKeyChecking=no ubuntu@152.67.10.33 'cd ~/AutoShare && nohup ~/AutoShare/venv/bin/python3 scripts/run_backtest.py --start 2021-06-01 --end 2026-06-30 --capital 500000 --strategy momentum > /tmp/bt_mom.log 2>&1 & echo \"MOM_PID:$!\"')",
+      "Bash(ssh -i \"c:\\\\Users\\\\Ashish\\\\Documents\\\\Claude\\\\AutoShare\\\\ssh-key-2026-06-28.key\" -o StrictHostKeyChecking=no ubuntu@152.67.10.33 \"sleep 15 && wc -l /tmp/bt_vcp.log /tmp/bt_mom.log && echo '---VCP TAIL---' && tail -5 /tmp/bt_vcp.log && echo '---MOM TAIL---' && tail -5 /tmp/bt_mom.log\")",
+      "Bash(ssh -i \"c:\\\\Users\\\\Ashish\\\\Documents\\\\Claude\\\\AutoShare\\\\ssh-key-2026-06-28.key\" -o StrictHostKeyChecking=no ubuntu@152.67.10.33 \"sleep 30 && wc -l /tmp/bt_vcp.log /tmp/bt_mom.log && echo '---VCP TAIL---' && tail -8 /tmp/bt_vcp.log && echo '---MOM TAIL---' && tail -8 /tmp/bt_mom.log\")",
+      "Bash(ssh -i \"c:\\\\Users\\\\Ashish\\\\Documents\\\\Claude\\\\AutoShare\\\\ssh-key-2026-06-28.key\" -o StrictHostKeyChecking=no ubuntu@152.67.10.33 \"ps aux | grep run_backtest | grep -v grep && echo '---VCP lines---' && wc -l /tmp/bt_vcp.log && tail -15 /tmp/bt_vcp.log\")",
+      "Bash(ssh -i \"c:\\\\Users\\\\Ashish\\\\Documents\\\\Claude\\\\AutoShare\\\\ssh-key-2026-06-28.key\" -o StrictHostKeyChecking=no ubuntu@152.67.10.33 \"kill 80266 2>/dev/null && echo 'killed 80266'; echo '---MOM tail---'; wc -l /tmp/bt_mom.log; tail -20 /tmp/bt_mom.log\")",
+      "Bash(ssh -i \"c:\\\\Users\\\\Ashish\\\\Documents\\\\Claude\\\\AutoShare\\\\ssh-key-2026-06-28.key\" -o StrictHostKeyChecking=no ubuntu@152.67.10.33 \"ps -p 80319 -o pid,etime,pcpu,pmem --no-headers 2>/dev/null && echo '---VCP log---' && wc -l /tmp/bt_vcp.log && tail -10 /tmp/bt_vcp.log\")",
+      "Bash(ssh -i \"c:\\\\Users\\\\Ashish\\\\Documents\\\\Claude\\\\ssh-key-2026-06-28.key\" -o StrictHostKeyChecking=no ubuntu@152.67.10.33 \"ps aux | grep run_backtest | grep -v grep\")"
+    ]
+  }
+}

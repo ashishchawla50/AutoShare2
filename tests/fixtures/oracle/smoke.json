@@ -1,0 +1,110 @@
+{
+ "metadata": {
+  "fixture_version": "1",
+  "window": "smoke",
+  "start_date": "2023-01-02",
+  "end_date": "2023-03-31",
+  "git_commit": "b218e83",
+  "created_utc": "2026-08-12T10:53:04",
+  "engine": "reference (use_panel=False)",
+  "reference_runtime_s": 852.6,
+  "dataset": {
+   "adjusted_rows": 2468251,
+   "max_trade_date": "2026-08-10",
+   "isins": 3184,
+   "quarantine_rows": 3340,
+   "applied_actions": 234,
+   "universe_months": 60,
+   "sha256": "c4999bcb1c286a93"
+  },
+  "config": {
+   "strategy": "vcp_v2",
+   "starting_capital": 50000.0,
+   "cost_profile": "cnc",
+   "data_source": "reconstructed",
+   "panel_version": "1.1.0",
+   "risk_per_trade_pct": 0.02,
+   "max_position_size_pct": 0.2,
+   "max_positions": 8,
+   "min_cash_reserve_pct": 0.2,
+   "min_position_value": 6000.0,
+   "hard_stop_pct": 0.07,
+   "time_stop_days": 15,
+   "vcp2_pivot_watch_days": 30,
+   "max_gap_up_pct": 0.05,
+   "enable_partial_profit": false,
+   "sha256": "2f743945e8735347"
+  }
+ },
+ "portfolio": {
+  "starting_capital": 50000.0,
+  "final_capital": 49255.590597,
+  "n_trades": 3,
+  "sum_realised_pnl": -744.409403,
+  "ledger_error": 0.0,
+  "open_positions_at_end": 0
+ },
+ "stats": {
+  "data_ok": 25522,
+  "analyse_called": 25522,
+  "fail_tt": 19008,
+  "fail_vcp": 5624,
+  "fail_tightness": 15,
+  "fail_breakout_confirm": 0,
+  "fail_other": 0,
+  "pivot_watch_added": 52,
+  "pivot_watch_expired": 30,
+  "event_filtered": 0,
+  "high_conf": 3,
+  "gap_filtered": 0,
+  "size_invalid": 0,
+  "entered": 3,
+  "regime_blocked_days": 12,
+  "dd_halted_days": 0
+ },
+ "trades": [
+  {
+   "isin": "INE152M01016",
+   "symbol": "TRITURBINE",
+   "strategy": "vcp_v2",
+   "entry_date": "2023-03-01",
+   "exit_date": "2023-03-14",
+   "entry_price": 320.3,
+   "exit_price": 317.236585,
+   "shares": 15,
+   "position_value": 4804.5,
+   "realised_pnl": -82.072711,
+   "realised_pnl_pct": -1.708247,
+   "exit_reason": "stop_loss"
+  },
+  {
+   "isin": "INE274J01014",
+   "symbol": "OIL",
+   "strategy": "vcp_v2",
+   "entry_date": "2023-03-09",
+   "exit_date": "2023-03-14",
+   "entry_price": 177.033333,
+   "exit_price": 167.20206,
+   "shares": 28,
+   "position_value": 4956.933333,
+   "realised_pnl": -311.573796,
+   "realised_pnl_pct": -6.285616,
+   "exit_reason": "stop_loss"
+  },
+  {
+   "isin": "INE495P01012",
+   "symbol": "BECTORFOOD",
+   "strategy": "vcp_v2",
+   "entry_date": "2023-03-13",
+   "exit_date": "2023-03-14",
+   "entry_price": 564.8,
+   "exit_price": 525.25,
+   "shares": 8,
+   "position_value": 4518.4,
+   "realised_pnl": -350.762896,
+   "realised_pnl_pct": -7.762989,
+   "exit_reason": "stop_loss"
+  }
+ ],
+ "content_sha256": "4ffc4c1f9fec577b39bd5e0c9136111150a8ff5c70b63e183fb528c0c81ba2fe"
+}

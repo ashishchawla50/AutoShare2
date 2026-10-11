@@ -1,0 +1,60 @@
+# ── Secrets & credentials ────────────────────────────────────────────────────
+.env
+data/.access_token.enc
+data/.last_heartbeat
+*.key
+*.pem
+
+# ── Personal / local config (not for version control) ────────────────────────
+data/manual_blocklist.txt
+
+# ── Databases (runtime state, regenerated automatically) ─────────────────────
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+logs/
+*.log
+
+# ── Data backups ─────────────────────────────────────────────────────────────
+data/backups/
+
+# ── Python compiled files ─────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ── Python packaging / build artifacts ───────────────────────────────────────
+*.egg-info/
+dist/
+build/
+*.egg
+MANIFEST
+
+# ── Testing & type checking ───────────────────────────────────────────────────
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+.env/
+
+# ── OS / editor junk ─────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.iml
+__pycache__/

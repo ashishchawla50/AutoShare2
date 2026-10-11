@@ -1,0 +1,43 @@
+# Core
+kiteconnect==5.0.1
+pandas==2.2.0
+numpy==1.26.4
+scipy==1.12.0
+
+# Data sources
+nsepy==0.8
+nsetools==1.0.11
+requests==2.31.0
+beautifulsoup4==4.12.3
+lxml==5.1.0
+
+# Database
+sqlalchemy==2.0.27
+
+# Scheduling
+APScheduler==3.10.4
+
+# Web (auth server)
+flask==3.0.2
+
+# Alerts
+python-telegram-bot==21.0.1
+
+# Security
+pyotp==2.9.0
+cryptography==42.0.4
+
+# Utilities
+python-dotenv==1.0.1
+pytz==2024.1
+
+# Monitoring
+psutil==5.9.8
+
+# Testing
+pytest==8.0.2
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+
+# Type checking
+mypy==1.8.0
