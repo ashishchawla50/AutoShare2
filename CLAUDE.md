@@ -325,19 +325,21 @@ The bot is **not** an HTTP API server. External surfaces are:
 
 ## Deployment Overview
 
-- **Platform:** Ubuntu 22.04 LTS VPS (Oracle Cloud)
-- **SSH:** `ssh -i ssh-key-2026-06-28.key ubuntu@152.67.10.33`
-- **App path:** `~/AutoShare/`
-- **Python:** `/home/trader/venv/bin/python` (virtualenv)
-- **Process manager:** Supervisord — two supervised processes (`trading_bot`, `auth_flask`)
+- **Platform:** Ubuntu 22.04 LTS VPS (Oracle Cloud, `ap-mumbai-1`, `VM.Standard.E2.1.Micro`, 1 GB RAM)
+- **SSH:** `ssh -i ssh-key-2026-06-28.key ubuntu@152.67.10.33` (Windows CMD: the key file's ACL must grant only your user — `icacls <key> /inheritance:r` then `/grant:r "%USERNAME%:R"`)
+- **App path:** `~/AutoShare2/` (clone of the public GitHub repo; no token in the remote URL)
+- **Python:** `~/AutoShare2/venv/bin/python` (Python 3.10 virtualenv — the VPS has no 3.12; live code runs fine on 3.10)
+- **Process manager:** Supervisord — two supervised processes (`autoshare`, `auth_flask`); config is `supervisord.conf` in the repo, installed as `/etc/supervisor/conf.d/autoshare.conf`
 - **Firewall:** UFW — ports 22, 8080, 8081 open
+- **Retired:** `~/AutoShare_retired_2026-10-11/` (old AutoShare checkout, its data and logs, plus research DBs `bhavcopy.db`/`reconstructed.db`) and `~/autoshare.conf.retired-2026-10-12`. Keep for reference; nothing runs from it.
 
 ---
 
 ## Current Development Status
 
 **AutoShare2 (2026-10-11): restart of AutoShare. Since 2026-10-11 it is the ONLY repo: all pulls, pushes and live deployment go through AutoShare2. The old AutoShare repo is retired (read-only history). Backtests run locally.**
-- **Pending one-time switch:** the VPS (`~/AutoShare`) still runs the old AutoShare repo. It must be repointed to AutoShare2 and restarted (rule 12).
+- **Switched 2026-10-12 00:21 IST: the VPS now runs AutoShare2** (`~/AutoShare2`, `main`). The old bot was stopped and its folder archived. Carried over: `.env`, the six live DBs, `manual_blocklist.txt`, `.regime_upgrade_state`, `.pivot_watchlist.json` (empty). On the VPS, before the switch: 0 open positions, 0 live trades ever, and the checkout was AutoShare `ca0e441` plus large uncommitted edits, not `6ca6d37`. Live config verified on the VPS: LIVE, ₹50k, 1.5× volume, −10% stop, 2%/20%, vcp_v2 only. VPS tests: 109/109 live-path tests pass; the full suite has 5 failures, the known `test_backtest.py` ones.
+- **BLOCKER (found 2026-10-12): Zerodha rejects the Kite Connect app — `Invalid api_key`.** The old bot was effectively offline from 2026-08-31 to the switch. Password and TOTP login still succeed, but the app's login URL returns HTTP 400, so no access token, no data refresh (`market_data.db` last updated 2026-08-28) and no regime reading since 2026-09-02. The log showed `TOTP login: no request_token in redirect`, and the daily Telegram login URLs were not acted on. Fix is in the Kite developer console (renew the app's subscription/credits, or create a new app and put its key/secret in `.env`). Until then the bot runs in monitoring-only mode.
 - **Base:** code from AutoShare `3a727c6`, which is the validated `b218e83` engine plus the August reconstructed-dataset work.
 - **Do not use AutoShare `6ca6d37` ("old code", 2026-10-11).** It gutted `backtest_engine.py`: vcp_v2 deleted, regime gate hardcoded BULL, 4-stock fallback universe. It also rewrote config: `MAX_POSITIONS` 5, `MAX_DRAWDOWN_PCT` 0.05, mean reversion un-benched. Those four files were restored from `3a727c6`.
 - **Fast engine:** backtests run in seconds (`scripts/run_backtest.py` for any strategy; see the Fast backtester section).
@@ -368,12 +370,12 @@ The bot is **not** an HTTP API server. External surfaces are:
     20% reserve. Before this, the owner's personal cash in the Zerodha account counted, so live could exceed the
     backtest's 4-position ceiling. `_check_margin` and `get_account_value` still read the raw broker balance, which is correct.
   - Regression tests: `tests/test_live_safety.py` (10 tests).
-  - **Not deployed.** The AutoShare repo the VPS runs (`6ca6d37`) still has all three bugs.
+  - **Deployed 2026-10-12** with the switch of the VPS to AutoShare2.
 - **Hardcode sweep (2026-10-11):** ~300 rule and operational literals moved into `config.py` (no behaviour change: all 6 oracle fixtures exact, every strategy's full-window trade ledger byte-identical, scheduler crons identical). Found on the way: tightness gate 50 typed in 3 places ignoring `VCP_MIN_TIGHTNESS_SCORE`; informational stop still 7%; `has_upcoming_event` defaults swapped (results 3 / other 7 vs the real 7 / 3); `is_pre_market` used 08:00 vs `PRE_MARKET_START` 09:00 (now `BOT_DAY_START`); `minutes_to_market_close` ignored `MARKET_CLOSE`; `setup_logging` ignored its `log_dir`. **Open, not changed:** the ranker's volume score still starts at 2.0x (`RANK_VOLUME_SCORE_FLOOR`) while entries need 1.5x; `PortfolioTracker.get_trade_history` ignores `days`.
 - Test suite (2026-10-11): 262 passed, 2 skipped, **15 failed**. The 15 failures predate PR #1 and are all backtest tests
   (`test_backtest.py` ×5, `test_reference_parity.py` ×9, `test_universe_churn.py` ×1). Causes: `reconstructed.db` is missing
   under the conftest tmp dir, and the test passes a `use_panel` kwarg that `BacktestEngine` no longer accepts.
-- Everything below this point describes AutoShare's history and the live VPS deployment, which still runs old AutoShare code until the switch.
+- Everything below this point is AutoShare's history (the live pilot ran old AutoShare code until the 2026-10-12 switch).
 
 **Phase: LIVE ₹50k Pilot (since 2026-07-20) — zero trades so far; machinery verified end-to-end through the risk gate on 2026-07-31**
 - **2026-08-08: pilot-scale re-validation PASSED** (`VALIDATION_2026_08.md`). ₹50k OOS PF **1.75**, bootstrap **84.7%**, MaxDD −4.35% vs **1.77** at ₹5L under the same cost model — cost drag at ₹6k positions costs ~0.02 PF. ₹1L OOS PF 1.84 / 89.3% (promotion reference). Dev window PF 1.19 (vs 1.23 at ₹5L) but bootstrap 73.4% and **MaxDD −19.78%, brushing the 20% halt**. Two backtest bugs fixed first: the drawdown halt is **absorbing** (fired 2022-02-14 then all 737 remaining days, killing 3 of 3.5 dev years — use `--no-dd-halt` to measure the underlying edge) and the cost model charged ₹20/side brokerage that CNC delivery does not incur (`--cost-model cnc`; ₹4,003 of a ₹5,085 "loss" was phantom cost). Control against goalpost-moving: the cost fix moved ₹5L OOS 1.73→1.77 but ₹50k 1.33→1.75, exactly the asymmetry a fixed fee predicts.
@@ -446,7 +448,7 @@ sudo supervisorctl -c /etc/supervisor/supervisord.conf restart autoshare
 sudo supervisorctl -c /etc/supervisor/supervisord.conf restart auth_flask
 
 # Tail live logs on VPS
-tail -f ~/AutoShare/logs/trading.log | python -m json.tool
+tail -f ~/AutoShare2/logs/trading.log | python -m json.tool
 
 # Run tests (local)
 pytest -v
@@ -458,19 +460,19 @@ pytest tests/test_regime.py -v
 mypy . --ignore-missing-imports
 
 # Run one-off scan (no bot startup) — use venv Python on VPS
-~/AutoShare/venv/bin/python3 scripts/manual_scan.py
+~/AutoShare2/venv/bin/python3 scripts/manual_scan.py
 
 # End-to-end paper test — clears the paper book and reruns the full
 # scan → rank → entry pipeline immediately (any time of day, paper only).
 # Use after every code deploy instead of waiting for the next 9:30 window.
-~/AutoShare/venv/bin/python3 scripts/run_e2e_paper.py
+~/AutoShare2/venv/bin/python3 scripts/run_e2e_paper.py
 
 # Backfill historical data (VPS — needs valid Kite token)
-~/AutoShare/venv/bin/python3 scripts/backfill_data.py --days 730
+~/AutoShare2/venv/bin/python3 scripts/backfill_data.py --days 730
 
 # Backfill historical corporate events for backtesting the events filter.
 # Writes corporate_events_full.db — NEVER point --db at the live events DB.
-~/AutoShare/venv/bin/python3 scripts/backfill_events.py --start 2021-01-01 --end 2026-07-31
+~/AutoShare2/venv/bin/python3 scripts/backfill_events.py --start 2021-01-01 --end 2026-07-31
 
 # ── Validation-grade backtest (the form to use for any real decision) ──────
 # --cost-model cnc : real Zerodha delivery charges (legacy default overstates
@@ -479,10 +481,10 @@ mypy . --ignore-missing-imports
 #                    is void for the remainder; use this to measure the edge
 # --events-db      : read the historical snapshot, never the live events DB
 # --dump-trades    : trade ledger CSV for cost-drag / run-vs-run comparison
-~/AutoShare/venv/bin/python3 scripts/run_backtest.py \
+~/AutoShare2/venv/bin/python3 scripts/run_backtest.py \
     --start 2025-01-01 --end 2026-06-30 --capital 50000 --strategy vcp_v2 \
     --cost-model cnc --dump-trades /tmp/oos.csv
-~/AutoShare/venv/bin/python3 scripts/run_backtest.py \
+~/AutoShare2/venv/bin/python3 scripts/run_backtest.py \
     --start 2021-06-01 --end 2024-12-31 --capital 50000 --strategy vcp_v2 \
     --cost-model cnc --no-dd-halt --events-filter --events-db corporate_events_full.db
 
@@ -491,13 +493,13 @@ mypy . --ignore-missing-imports
 # added 2026-08-07). Always nohup/setsid — these outlive an SSH session.
 
 # Run backtest (VPS) — 5-year diagnostic run
-~/AutoShare/venv/bin/python3 scripts/run_backtest.py --start 2021-06-01 --end 2026-06-30 --capital 500000 --strategy vcp
-~/AutoShare/venv/bin/python3 scripts/run_backtest.py --start 2021-06-01 --end 2026-06-30 --capital 500000 --strategy momentum
-~/AutoShare/venv/bin/python3 scripts/run_backtest.py --start 2021-06-01 --end 2026-06-30 --capital 500000 --strategy breakout
-~/AutoShare/venv/bin/python3 scripts/run_backtest.py --start 2021-06-01 --end 2026-06-30 --capital 500000 --strategy mean_reversion
+~/AutoShare2/venv/bin/python3 scripts/run_backtest.py --start 2021-06-01 --end 2026-06-30 --capital 500000 --strategy vcp
+~/AutoShare2/venv/bin/python3 scripts/run_backtest.py --start 2021-06-01 --end 2026-06-30 --capital 500000 --strategy momentum
+~/AutoShare2/venv/bin/python3 scripts/run_backtest.py --start 2021-06-01 --end 2026-06-30 --capital 500000 --strategy breakout
+~/AutoShare2/venv/bin/python3 scripts/run_backtest.py --start 2021-06-01 --end 2026-06-30 --capital 500000 --strategy mean_reversion
 
 # Manual TOTP login (VPS — get fresh token without waiting for 8 AM)
-cd ~/AutoShare && ~/AutoShare/venv/bin/python3 -c "
+cd ~/AutoShare2 && ~/AutoShare2/venv/bin/python3 -c "
 from broker.auth_manager import AuthManager
 auth = AuthManager()
 print('Token obtained:', bool(auth.login_with_totp()))

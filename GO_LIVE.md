@@ -115,3 +115,14 @@ before the next window.
   (AutoShare repo) still runs the unfixed code.** Deploy, restart
   (Architecture Rule 12) and verify before the first live position
   needs a trailing stop.
+- **2026-10-12 — VPS switched to AutoShare2.** The old bot was stopped and
+  `~/AutoShare` moved to `~/AutoShare_retired_2026-10-11`. AutoShare2 runs
+  from `~/AutoShare2` under the same supervisor names (`autoshare`,
+  `auth_flask`), with `.env` and the live DBs carried over. The PR #1 fixes,
+  1.5× volume and the −10% stop are now live. Verified: LIVE mode, ₹50k,
+  heartbeat fresh, 109/109 live-path tests pass on the VPS.
+  **Blocker found on the way:** the bot had been offline since 2026-08-31.
+  Zerodha rejects the Kite Connect app with `Invalid api_key` (password and
+  TOTP still succeed), so no token has been issued since 2026-08-28. Renew
+  the app in the Kite developer console (or create a new one and update
+  `.env`), then restart and confirm `/status` shows `authenticated: true`.

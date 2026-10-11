@@ -3,7 +3,7 @@
 > **Living document.** Plain-language explanation of everything the bot does,
 > written for a reader with zero share-market knowledge. Update this file
 > whenever the strategy, filters, sizing, or live status change (see the
-> changelog at the bottom). Last updated: **2026-10-11**.
+> changelog at the bottom). Last updated: **2026-10-12**.
 
 ---
 
@@ -385,6 +385,12 @@ Extra rigor:
 
 ## 10. Live pilot scoreboard (updated 2026-08-11)
 
+> **2026-10-12 status:** the bot was **offline from 2026-08-31 to 2026-10-12**. Zerodha stopped
+> accepting its Kite Connect app (`Invalid api_key`), so it could not log in, refresh data or
+> trade. Still 0 real trades, 0 open positions. The live machine now runs the AutoShare2 code
+> (1.5× volume, −10% stop, live-safety fixes). It resumes trading once the Kite app is renewed.
+> The figures below are from 2026-08-11 and will be refreshed once it runs again.
+
 - **LIVE since 2026-07-20** with ₹50,000. Success metric for this phase:
   *does the machine execute faithfully* — not P&L.
 - **Trades: 0. P&L: ₹0. Drawdown: 0.** (The database holds 19 closed trades,
@@ -417,6 +423,14 @@ Extra rigor:
 
 ## Changelog
 
+- **2026-10-12** — **Live bot switched to the AutoShare2 code.** The old program was stopped
+  and archived. The new one runs on the same server with the same capital (₹50,000), the same
+  blocklist and the same records. It brings the 1.5× breakout volume, the −10% first stop and
+  the three live-safety fixes to real money for the first time. **Found during the switch:** the
+  bot had not been able to log in to Zerodha since 31 August, because Zerodha stopped accepting
+  its API app. It was never in a trade during that time (0 positions), so nothing was at risk,
+  but it also could not trade. It restarts once the Zerodha app is renewed.
+
 - **2026-10-11** — **First stop widened from −7% to −10%, keeping 1.5× breakout volume
   (owner decision).** All four combinations were tested (₹50k, full 2021-09 → 2026-08, real
   costs):
@@ -442,8 +456,7 @@ Extra rigor:
   placement never leaves a position without a stop. (3) Live "available cash" is now capped at
   the bot's own ₹50k-based cash minus the 20% reserve; before, the owner's personal cash in the
   same Zerodha account counted, so live could hold more and larger positions than the backtest.
-  *These fixes are in the AutoShare2 research code. As of 2026-10-11 they are **not yet deployed** to
-  the live bot. None of the bugs has fired, because the pilot has made zero trades.*
+  *Deployed to the live bot on 2026-10-12. None of the bugs had fired, because the pilot had made zero trades.*
 - **2026-10-11** — **Thumb rule adopted as the ranking rule:** less % profit in fewer
   days beats more % in more days, measured as profit per day invested. A pre-registered
   test of 11 faster alternatives (docs/TEST_PLAN_2026_10C.md) found **the current exits
@@ -460,7 +473,7 @@ Extra rigor:
   and stay as they are. **Caveat found afterwards:** one continuous 2021–2026 run is
   *worse* at 1.5× (PF 1.04 vs 1.20). Medians over 15 start dates are slightly better
   (speed of profit +1.99% vs +1.77% per 30 days in 2025–26), so it stays, but the
-  margin is thin. **Not yet deployed to the live VPS** (still 2.0×).
+  margin is thin. Live since 2026-10-12.
 - **2026-08-11** — Document refreshed against the live bot: funnel numbers
   (442/500 pond, 151 past trend checks, 23 watched), regime now BULL, watchlist
   list rewritten, scoreboard re-checked directly against the database.
