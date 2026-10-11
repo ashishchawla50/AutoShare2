@@ -143,6 +143,7 @@ AutoShare/
 │   ├── test_conftest_isolation.py # Guards that isolation (2026-08-06 regime poisoning)
 │   ├── test_order_safety.py # Live order-path hardening (fill-confirmed exits, GTT mandatory)
 │   ├── test_live_safety.py  # 2026-10-11 audit fixes: trailing-stop crash, GTT replace order, live cash cap
+│   ├── test_blocklist.py    # Personal holdings (manual_blocklist.txt) never bought or sold
 │   ├── test_strategy.py     # VCP, trend template, stage analysis tests
 │   ├── test_filters.py      # All 9 stock filter tests
 │   ├── test_risk.py         # Position sizer, drawdown monitor tests
