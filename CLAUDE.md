@@ -558,4 +558,6 @@ Same methodology at pilot capital, ₹6,000 floor, real CNC costs (`--cost-model
 | `DUST_FLOOR_DECISION.md` | Real CNC cost math behind the ₹6,000 minimum-position floor |
 | `DIVERGENCE_INVENTORY.md` | Live-vs-backtest rule differences, severity-ranked (A1 RS gate + B1 partial profits are open) |
 | `GO_LIVE.md` | Live pilot runbook |
+| `docs/WINNING_STRATEGY.md` | Exit-plan study 2026-10-11: current exits vs my_strategy (sell 50% at +10%), per-signal results — candidates, not portfolio-validated |
+| `docs/XYZ_TRADE_EXAMPLE.md` | Plain-language ₹100 walk-through of both exit plans |
 | `TODO.md` / `ARCHITECTURE.md` / `DEPLOYMENT.md` | Backlog, design, VPS setup |
