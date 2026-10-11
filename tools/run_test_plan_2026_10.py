@@ -403,5 +403,82 @@ def fast():
     save("fast", res)
 
 
+# ── Batch C: the speed-of-profit rule (docs/TEST_PLAN_2026_10C.md) ────────────
+
+def velocity_runs(starts, end, rule_strategy=None, **opts):
+    """Median velocity (% per 30 days invested), CAGR, PF, DD, days held, idle days."""
+    from backtest.fast.rule_engine import FastRuleEngine
+    from backtest.fast.rules import load_rule_signals
+    rows = []
+    for s in starts:
+        kw = dict(start_date=s, end_date=end, starting_capital=50_000.0, dd_halt=False,
+                  market=MD, signals=signals(), universe=UNI, verbose=False)
+        if rule_strategy:
+            e = FastRuleEngine(strategy=rule_strategy, rules=load_rule_signals(MD), **kw, **opts)
+        else:
+            e = FastBacktestEngine(**kw, **opts)
+        m = e.run()
+        t = e._closed_trades
+        rd = sum(x["entry_price"] * x["shares"] * max(1, (x["exit_date"] - x["entry_date"]).days) for x in t)
+        pnl = sum(x["realised_pnl"] for x in t)
+        days = [max(1, (x["exit_date"] - x["entry_date"]).days) for x in t]
+        cal = sorted(e._equity_curve)
+        idle = np.mean([not any(x["entry_date"] <= d < x["exit_date"] for x in t) for d in cal]) if cal else 1.0
+        rows.append({"vel": pnl / rd * 30 * 100 if rd else 0.0, "cagr": m.cagr_pct,
+                     "pf": m.profit_factor if m.total_trades else 0.0, "dd": m.max_drawdown_pct,
+                     "days": float(np.mean(days)) if days else 0.0, "trades": m.total_trades,
+                     "idle": float(idle)})
+    df = pd.DataFrame(rows)
+    return {k: float(df[k].median()) for k in df.columns}
+
+
+def velocity():
+    big = 10.0     # TIME_STOP_MIN_PROFIT_PCT this high = exit on the day whatever the profit
+    cands = {
+        "baseline": ({}, {}, None),
+        "T1 time stop 10d (<7%)": ({"TIME_STOP_DAYS": 10}, {}, None),
+        "T2 day 5+, exit if <2%": ({"TIME_STOP_DAYS": 5, "TIME_STOP_MIN_PROFIT_PCT": 0.02}, {}, None),
+        "T3 max hold 10 days": ({"TIME_STOP_DAYS": 10, "TIME_STOP_MIN_PROFIT_PCT": big}, {}, None),
+        "T4 max hold 5 days": ({"TIME_STOP_DAYS": 5, "TIME_STOP_MIN_PROFIT_PCT": big}, {}, None),
+        "P1 take profit +3%": ({}, {"take_profit": 0.03}, None),
+        "P2 take profit +5%": ({}, {"take_profit": 0.05}, None),
+        "P3 take profit +10%": ({}, {"take_profit": 0.10}, None),
+        "C1 TP +5% & max hold 10d": ({"TIME_STOP_DAYS": 10, "TIME_STOP_MIN_PROFIT_PCT": big},
+                                     {"take_profit": 0.05}, None),
+        "R-mr mean reversion": ({}, {}, "mean_reversion"),
+        "R-mom momentum": ({}, {}, "momentum"),
+        "R-bo 20-day breakout": ({}, {}, "breakout"),
+    }
+    res = {}
+    print(f"{'candidate':26s} | {'DEV vel/30d':>11s} {'CAGR':>6s} {'PF':>5s} {'DD':>6s} {'days':>5s} {'idle':>5s} | "
+          f"{'OOS vel/30d':>11s} {'CAGR':>6s} {'PF':>5s} {'days':>5s} {'idle':>5s}")
+    for name, (over, opts, strat) in cands.items():
+        with cfg(HARD_STOP_PCT=0.07, **over):
+            d = velocity_runs(DEV_STARTS, DEV[1], strat, **opts)
+            o = velocity_runs(OOS_STARTS, OOS[1], strat, **opts)
+        res[name] = {"dev": d, "oos": o}
+        print(f"{name:26s} | {d['vel']:+10.2f}% {d['cagr']:+5.1f}% {d['pf']:5.2f} {d['dd']:+5.1f}% {d['days']:5.1f} "
+              f"{d['idle']:5.0%} | {o['vel']:+10.2f}% {o['cagr']:+5.1f}% {o['pf']:5.2f} {o['days']:5.1f} {o['idle']:5.0%}")
+    b = res["baseline"]
+    print("\nRule R3:")
+    passing = []
+    for name, r in res.items():
+        if name == "baseline":
+            continue
+        d, o = r["dev"], r["oos"]
+        guards = d["pf"] > 1 and o["pf"] > 1 and d["cagr"] > 0 and o["cagr"] > 0 and d["dd"] > -20
+        faster = d["vel"] > b["dev"]["vel"] and o["vel"] > b["oos"]["vel"]
+        r["guards"], r["faster"] = guards, faster
+        if guards and faster:
+            passing.append((d["vel"], name))
+        print(f"  {name:26s} makes money: {'yes' if guards else 'NO'} | faster than baseline both: "
+              f"{'yes' if faster else 'NO'}")
+    winner = max(passing)[1] if passing else "baseline"
+    print(f"\n  -> WINNER: {winner}")
+    res["winner"] = winner
+    save("velocity", res)
+
+
 if __name__ == "__main__":
-    {"groupA": group_a, "groupC": group_c, "b1": b1, "b3": b3, "b2": b2, "fast": fast}[sys.argv[1]]()
+    {"groupA": group_a, "groupC": group_c, "b1": b1, "b3": b3, "b2": b2, "fast": fast,
+     "velocity": velocity}[sys.argv[1]]()
