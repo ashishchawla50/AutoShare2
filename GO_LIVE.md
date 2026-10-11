@@ -104,3 +104,14 @@ before the next window.
 - **2026-08-03:** pond 449, watchlist a record 15 pivots, still zero valid
   breakouts — CAUTIOUS regime, VIX ~12; 2x-volume breakouts cluster in
   strong tapes. Machinery verified end-to-end; waiting is the strategy.
+- **2026-10-11 — audit fixes in AutoShare2 (PR #1), not yet deployed:** a code
+  audit found three live-only bugs.
+  (C1) The first trailing-stop raise would crash `check_exits`, which left the
+  GTT at −7% and skipped the remaining positions.
+  (M2) A GTT stop raise deleted the old stop before placing the new one.
+  (H1) Live available cash counted the owner's personal cash, so the bot
+  could exceed its capital and the 20% reserve.
+  None of these fired, because the pilot has made zero trades. **The VPS
+  (AutoShare repo) still runs the unfixed code.** Deploy, restart
+  (Architecture Rule 12) and verify before the first live position
+  needs a trailing stop.

@@ -1,6 +1,17 @@
 # TODO.md — AutoShare Trading Bot
 
-Last updated: 2026-08-10. Authoritative current state lives in `CLAUDE.md`.
+Last updated: 2026-10-11. Authoritative current state lives in `CLAUDE.md`.
+
+---
+
+## 2026-10-11: Live-safety fixes (PR #1, AutoShare2 only — not yet on the VPS)
+
+- [x] **C1** `check_exits` trailing-stop crash (`UnboundLocalError` because partial profits are off). Positions are now checked one at a time, each in its own try/except
+- [x] **M2** GTT stop raise: the new GTT is placed before the old one is deleted, and the old one is kept on failure
+- [x] **H1** Live `get_available_cash` is capped at bot cash − 20% reserve, so personal cash no longer extends bot capital
+- [x] `tests/test_live_safety.py` (10 regression tests)
+- [ ] Port these three fixes to the AutoShare repo the VPS runs, or redeploy from AutoShare2, then restart and verify
+- [ ] Fix the 15 failing backtest tests (`test_backtest.py`, `test_reference_parity.py`, `test_universe_churn.py`). They predate PR #1
 
 ---
 

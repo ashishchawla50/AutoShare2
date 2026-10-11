@@ -52,10 +52,10 @@ Legend: **MATCH** identical · **DIVERGE** materially different · **N/A** absen
 | 13 | Position sizing | `calculate_position_size` | `calculate_position_size` | MATCH |
 | 14 | Risk %, position cap | 2.0% / 20% | 2.0% / 20% | MATCH |
 | 15 | Dust floor | ₹6,000 × regime mult | ₹6,000 × regime mult | MATCH |
-| 16 | Cash reserve | 20% | 20% | MATCH |
+| 16 | Cash reserve | 20% | 20% | MATCH in paper. **In live mode it diverged until 2026-10-11:** `get_available_cash` returned the raw Zerodha balance, which includes the owner's personal cash. The reserve did not bind and live could exceed 4 positions. Fixed by capping it at the bot's own cash minus the reserve (audit H1). |
 | 17 | Sector cap 30% | `risk_manager.approve_entry` | **absent** | **DIVERGE** |
 | 18 | Duplicate-holding check | `approve_entry` | `if symbol in self._open_positions` | MATCH (effect) |
-| 19 | Max positions | 8 pool (effectively 4, MAJOR-10) | 8 pool (effectively 4) | MATCH |
+| 19 | Max positions | 8 pool (effectively 4, MAJOR-10) | 8 pool (effectively 4) | MATCH. Live mode matches only since the #16 fix on 2026-10-11 |
 | 20 | Manual blocklist | enforced twice | **absent** | DIVERGE (live-only, intentional) |
 | 21 | Hard stop 7% | `calculate_stop_loss_price` | `calculate_stop_loss_price` | MATCH |
 | 22 | Trailing ratchet | `calculate_trailing_stop` | `calculate_trailing_stop` | MATCH |

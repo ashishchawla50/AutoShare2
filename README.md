@@ -176,7 +176,7 @@ mypy . --ignore-missing-imports
 
 Tests are located in `tests/`. All tests force paper mode and disable Telegram via `conftest.py` — no live API calls are made.
 
-Current status: **163/163 tests passing** (as of 2026-08-08).
+Current status (2026-10-11): **262 passed, 2 skipped, 15 failed.** All 15 failures are backtest tests that were already failing before the 2026-10-11 live-safety fixes. See `CLAUDE.md` → Current Development Status.
 
 ---
 

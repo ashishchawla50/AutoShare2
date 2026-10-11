@@ -31,6 +31,7 @@ trade, **C** = cosmetic/structural.
 | A14 | **Entry extension** — open >5% past pivot rejected (`evaluate_gap`) | yes | **not checked at entry** (only inside `is_valid_breakout` on the prior close) | A |
 | A15 | **Ranking under slot pressure** | scores and takes the best N | fills slots in **universe iteration order** (alphabetical bias) | A |
 | A16 | **VIX regimes** (HIGH/EXTREME_VOLATILITY) | can block entries | VIX-less — those states can never trigger | A |
+| A17 | **Available cash (live mode)** — *added 2026-10-11, FIXED same day* | Raw Zerodha `live_balance`, which includes the owner's personal cash. The 20% reserve never bound, so live could hold more than 4 positions | bot cash − 20% reserve (≈4-position ceiling) | A (fixed — live is now capped at bot cash − reserve, audit H1) |
 
 **A1 is the most under-documented.** `CLAUDE.md` says "no RS gate at watch-add
 (validated config has none)" — true, but the gate simply moved downstream: every

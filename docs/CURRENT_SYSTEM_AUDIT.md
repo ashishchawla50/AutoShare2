@@ -219,7 +219,9 @@ count implies 2/7 ≈ 28.6% of portfolio, so `MAX_POSITION_SIZE_PCT = 20%`
 
 So the live portfolio is structurally **4 concentrated positions at 20% each,
 80% invested, 20% permanently idle** — not the 8 the config and documentation
-describe. This is identical in both engines, so it is not a parity break; it is a
+describe. This is identical in both engines, so it is not a parity break (correction 2026-10-11: in **live** mode it was
+not identical. `get_available_cash` read the raw Zerodha balance, including the owner's personal cash, so
+the ceiling did not bind live until the audit-H1 fix); it is a
 strategy-design fact that no document currently states, and it bears directly on
 capital utilization, concentration and correlated-loss risk.
 
