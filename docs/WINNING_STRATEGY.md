@@ -6,9 +6,9 @@ vcp_v2 breakout signal from Sept 2021 to June 2026 (297 signals):
 1. **Current exits**: the vcp_v2 exit rules in the code, with the first stop at −10%
 2. **my_strategy**: sell 50% at +10%, then let the rest run
 
-**Status: candidates, not proven.** Both make money over the full 5 years but **lose money in
-2025–26**. The tests treat each signal as its own trade, without the 8-position portfolio limit.
-The next step is a full portfolio backtest of both. See "Limits of these tests" at the bottom.
+**Final status (2026-10-11): the full portfolio test kept the CURRENT EXITS, and my_strategy was
+rejected.** It tied in 2021–24 but fell to PF 1.01 in 2025–26 against 1.75. See "Portfolio test
+RESULT" near the bottom. The per-signal study below is what led to the test.
 
 Both plans use the **same entry**: the vcp_v2 breakout. The stock is in a strong uptrend, goes
 quiet in a tight range, closes above the top of that range (the pivot) on 2× normal volume, and
@@ -226,6 +226,54 @@ trailing table, 10-day-average floor, breakout-failed and heavy-selling exits, 1
 
 Today's live stop (−7%) with the current exits is run as a reference only. It is not part of the
 decision.
+
+## Portfolio test RESULT (run 2026-10-11, after the plan above was committed)
+
+**Verdict: the current exits STAY in both setups. my_strategy is rejected.**
+
+| Setup | PF higher in both windows? | 2021–24 drawdown above −20%? | Decision |
+|---|---|---|---|
+| S1 ₹50k, 2% risk | **No**: 1.40 vs 1.40 (tie), then 1.01 vs **1.75** | yes (−12.9%) | current exits stay |
+| S2 ₹1L, 1% risk | **No**: 1.15 vs 1.06, then 0.80 vs **1.04** | yes (−8.7%) | current exits stay |
+
+### S1 — ₹50,000, 2% risk, 20% max position (4 positions)
+
+| Plan | Window | Trades | Win % | PF | Return | CAGR | Max DD | Avg days held | Avg positions open | Days with no position |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Current exits, −10% | 2021–24 | 126 | 40% | **1.40** | **+28.2%** | +7.7% | −13.8% | 19 | 1.9 | 40% |
+| Current exits, −10% | 2025–26 | 39 | 51% | **1.75** | **+8.2%** | +5.4% | −5.9% | 19 | 1.4 | 58% |
+| my_strategy, −10% | 2021–24 | 96 | 60% | 1.40 | +25.1% | +7.0% | −12.9% | 40 | 3.1 | 22% |
+| my_strategy, −10% | 2025–26 | 29 | 52% | 1.01 | +0.3% | +0.2% | −9.3% | 48 | 2.6 | 38% |
+| (ref) current exits, −7% | 2021–24 | 130 | 36% | 1.29 | +22.1% | +6.2% | −17.1% | 18 | 1.9 | 41% |
+| (ref) current exits, −7% | 2025–26 | 39 | 51% | 1.78 | +8.4% | +5.5% | −5.7% | 19 | 1.4 | 58% |
+
+### S2 — ₹1,00,000, 1% risk, 10% max position (8 positions)
+
+| Plan | Window | Trades | Win % | PF | Return | CAGR | Max DD | Avg days held | Avg positions open | Days with no position |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Current exits, −10% | 2021–24 | 157 | 39% | 1.06 | +2.7% | +0.8% | −9.4% | 18 | 2.3 | 40% |
+| Current exits, −10% | 2025–26 | 44 | 41% | **1.04** | +0.4% | +0.2% | −4.6% | 18 | 1.5 | 58% |
+| my_strategy, −10% | 2021–24 | 115 | 59% | **1.15** | **+6.3%** | +1.8% | −8.7% | 38 | 3.6 | 22% |
+| my_strategy, −10% | 2025–26 | 32 | 47% | 0.80 | −2.4% | −1.6% | −7.1% | 47 | 2.9 | 38% |
+| (ref) current exits, −7% | 2021–24 | 160 | 36% | 0.94 | −2.6% | −0.8% | −11.0% | 17 | 2.2 | 41% |
+| (ref) current exits, −7% | 2025–26 | 44 | 41% | 1.06 | +0.5% | +0.3% | −4.5% | 18 | 1.5 | 58% |
+
+Days held here are calendar days (the earlier tables used trading days).
+
+### What the portfolio test showed
+
+1. **my_strategy fails in 2025–26.** It ties in 2021–24 (PF 1.40 each) but collapses to PF 1.01
+   in 2025–26 against 1.75. The simplified slot simulation had my_strategy ahead; the real
+   portfolio (cash, regime sizing, actual signal order) reversed that. This is why the full test
+   was needed.
+2. **S2 is much worse than S1.** 8 positions at 1% risk earned almost nothing (+0.8% CAGR in
+   2021–24) against +7.7% for 4 positions at 2% risk. At ₹1L, **keep 2% risk with 20% positions**;
+   more, smaller positions do not help.
+3. **A −10% first stop looked better than −7%** with the current exits at S1: PF 1.40 against 1.29
+   in 2021–24, drawdown −13.8% against −17.1%, and a tie in 2025–26. This was a reference row,
+   not a pre-registered test, so **it is a hypothesis to test separately, not a decision.**
+4. **Money sits idle a lot:** no position on 40–58% of days with the current exits. There are too
+   few signals, not too few slots. More good signals (entries) is where profit can grow.
 
 The scripts used are in the 2026-10-11 session scratchpad (not in the repo). The
 numbers above are the full record.

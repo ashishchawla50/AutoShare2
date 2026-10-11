@@ -215,6 +215,8 @@ python scripts/manual_scan.py
 python scripts/run_backtest.py --window 6m --strategy mean_reversion --capital 100000 --ignore-regime
 python scripts/run_backtest.py --window 1y                        # vcp_v2 (default), ₹50k, CNC costs
 python scripts/run_backtest.py --strategy all --window full --no-dd-halt --dump-trades t.csv
+python scripts/run_backtest.py --exit my_strategy --stop-pct 0.10 --risk-pct 0.02 --max-pos-pct 0.20
+#   --exit vcp|my_strategy (vcp_v2 only); --stop-pct/--risk-pct/--max-pos-pct override config for this run
 #   strategies: vcp_v2 mean_reversion momentum momentum_v2..v4 breakout breakout_v2 all
 #   windows: 1m 3m 6m 1y 2y 3y 5y full   (or --start/--end)
 
@@ -558,6 +560,6 @@ Same methodology at pilot capital, ₹6,000 floor, real CNC costs (`--cost-model
 | `DUST_FLOOR_DECISION.md` | Real CNC cost math behind the ₹6,000 minimum-position floor |
 | `DIVERGENCE_INVENTORY.md` | Live-vs-backtest rule differences, severity-ranked (A1 RS gate + B1 partial profits are open) |
 | `GO_LIVE.md` | Live pilot runbook |
-| `docs/WINNING_STRATEGY.md` | Exit-plan study 2026-10-11: current exits vs my_strategy (sell 50% at +10%), per-signal results — candidates, not portfolio-validated |
+| `docs/WINNING_STRATEGY.md` | Exit-plan study 2026-10-11: current exits vs my_strategy (sell 50% at +10%). Pre-registered portfolio test: **current exits stay**, my_strategy rejected (2025–26 PF 1.01 vs 1.75); 1%-risk/8-position setup earned ~0 |
 | `docs/XYZ_TRADE_EXAMPLE.md` | Plain-language ₹100 walk-through of both exit plans |
 | `TODO.md` / `ARCHITECTURE.md` / `DEPLOYMENT.md` | Backlog, design, VPS setup |

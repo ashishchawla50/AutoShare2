@@ -39,10 +39,11 @@ import numpy as np
 import pandas as pd
 
 from backtest.fast.data import Universe, load_market_data
-from backtest.fast.engine import FastBacktestEngine
+from backtest.fast.engine import EXIT_MODES, FastBacktestEngine
 from backtest.fast.rule_engine import RULE_STRATEGIES, FastRuleEngine
 from backtest.fast.signals import load_signals
 from backtest.performance_analyzer import print_report
+from config.config import config
 
 STRATEGIES = ("vcp_v2",) + RULE_STRATEGIES
 WINDOWS = {"1m": 1, "3m": 3, "6m": 6, "1y": 12, "2y": 24, "3y": 36, "5y": 60}
@@ -104,6 +105,12 @@ def main() -> None:
     p.add_argument("--no-dd-halt", action="store_true",
                    help="disable the absorbing 20%% drawdown halt to measure the underlying edge")
     p.add_argument("--cost-model", choices=["cnc", "legacy"], default="cnc")
+    p.add_argument("--exit", choices=EXIT_MODES, default="vcp",
+                   help="vcp_v2 exit plan: vcp (current exits) or my_strategy (docs/WINNING_STRATEGY.md)")
+    p.add_argument("--stop-pct", type=float, help=f"first stop, e.g. 0.10 (default {config.HARD_STOP_PCT})")
+    p.add_argument("--risk-pct", type=float, help=f"risk per trade (default {config.RISK_PER_TRADE_PCT})")
+    p.add_argument("--max-pos-pct", type=float,
+                   help=f"max position as share of capital (default {config.MAX_POSITION_SIZE_PCT})")
     p.add_argument("--dump-trades", metavar="CSV", help="write the trade ledger to CSV")
     p.add_argument("--rebuild-cache", action="store_true", help="rebuild array + signal caches")
     args = p.parse_args()
@@ -111,6 +118,13 @@ def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")   # report uses → and ₹; Windows console is cp1252
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
+    if args.exit != "vcp" and args.strategy != "vcp_v2":
+        sys.exit("--exit applies to --strategy vcp_v2 only")
+    # Research overrides of the live config — this process only, nothing is written
+    for flag, name in (("stop_pct", "HARD_STOP_PCT"), ("risk_pct", "RISK_PER_TRADE_PCT"),
+                       ("max_pos_pct", "MAX_POSITION_SIZE_PCT")):
+        if getattr(args, flag) is not None:
+            setattr(config, name, getattr(args, flag))
     t0 = time.perf_counter()
     md = load_market_data(rebuild=args.rebuild_cache)
     start, end = _resolve_dates(args, np.datetime64(int(md.dates.max()), "D").item())
@@ -120,7 +134,7 @@ def main() -> None:
                   market=md, signals=load_signals(md, rebuild=args.rebuild_cache),
                   universe=Universe(), verbose=False, ignore_regime=args.ignore_regime)
     if args.strategy == "vcp_v2":
-        engine = FastBacktestEngine(**common)
+        engine = FastBacktestEngine(exit_mode=args.exit, **common)
     else:
         from backtest.fast.rules import load_rule_signals
         engine = FastRuleEngine(strategy=args.strategy,
@@ -128,7 +142,10 @@ def main() -> None:
 
     print(f"{args.strategy} | {start} → {end} | ₹{args.capital:,.0f} | costs {args.cost_model} | "
           f"regime {'IGNORED' if args.ignore_regime else 'gated'} | "
-          f"dd-halt {'off' if args.no_dd_halt else 'on'}")
+          f"dd-halt {'off' if args.no_dd_halt else 'on'}\n"
+          f"exits {args.exit if args.strategy == 'vcp_v2' else args.strategy} | "
+          f"first stop {config.HARD_STOP_PCT:.0%} | risk {config.RISK_PER_TRADE_PCT:.1%} | "
+          f"max position {config.MAX_POSITION_SIZE_PCT:.0%}")
     metrics = engine.run()
     print_report(metrics)
 

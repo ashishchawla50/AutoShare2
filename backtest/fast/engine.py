@@ -64,6 +64,16 @@ class _Pos:
     vcp_low: Optional[float]
     strategy: str = "vcp_v2"
     target_price: float = 0.0    # fixed profit target; 0 = none
+    # partial sales (exit_mode "my_strategy"); untouched by the oracle path
+    armed: bool = False          # +10% reached: half sold, stop at entry, trailing on
+    orig_shares: int = 0         # shares bought, set on the first partial sale
+    sold_shares: int = 0
+    sold_value: float = 0.0
+    realised: float = 0.0        # net P&L already booked by partial sales
+
+
+EXIT_MODES = ("vcp", "my_strategy")
+MY_PARTIAL_AT = 0.10            # my_strategy: sell half when the high reaches +10%
 
 
 class FastBacktestEngine:
@@ -84,7 +94,11 @@ class FastBacktestEngine:
         universe: Optional[Universe] = None,
         verbose: bool = True,
         ignore_regime: bool = False,
+        exit_mode: str = "vcp",
     ) -> None:
+        if exit_mode not in EXIT_MODES:
+            raise ValueError(f"exit_mode must be one of {EXIT_MODES}")
+        self._exit_mode = exit_mode
         self.start_date = start_date
         self.end_date = end_date
         self.starting_capital = starting_capital
@@ -217,18 +231,43 @@ class FastBacktestEngine:
 
     def _close(self, slot: int, exit_price: float, exit_date: date, reason: str) -> None:
         p = self._open.pop(slot)
-        net_pnl, pnl_pct = calculate_net_pnl(p.entry_price, exit_price, p.shares, self._costs)
-        sell_value = exit_price * p.shares
+        shares = p.shares
+        if p.sold_shares:                       # partial sale earlier: one record for the whole trade
+            net_pnl = p.realised + self._leg_net(p, p.shares, exit_price)
+            shares = p.orig_shares
+            pnl_pct = net_pnl / (p.entry_price * shares)
+            sell_value = exit_price * p.shares
+            exit_price = (p.sold_value + sell_value) / shares     # average sell price
+            reason = f"{reason} (after 50% @+{MY_PARTIAL_AT:.0%})"
+        else:
+            net_pnl, pnl_pct = calculate_net_pnl(p.entry_price, exit_price, p.shares, self._costs)
+            sell_value = exit_price * p.shares
         self.capital += sell_value - calculate_sell_cost(sell_value, self._costs)
         isin = self._isins[slot]
         self._closed_trades.append({
             "isin": isin,
             "symbol": self._uni.symbol_at(isin, p.entry_date.isoformat()),
             "entry_date": p.entry_date, "exit_date": exit_date,
-            "entry_price": p.entry_price, "exit_price": exit_price, "shares": p.shares,
+            "entry_price": p.entry_price, "exit_price": exit_price, "shares": shares,
             "realised_pnl": net_pnl, "realised_pnl_pct": pnl_pct * 100,
             "exit_reason": reason, "strategy": p.strategy,
         })
+
+    def _leg_net(self, p: _Pos, n: int, px: float) -> float:
+        """Net P&L of selling n shares at px, with the buy cost shared pro rata — so the
+        legs of a split trade sum to exactly what the entry outflow and sells moved."""
+        buy_cost = calculate_buy_cost(p.entry_price * p.orig_shares, self._costs) * n / p.orig_shares
+        return n * (px - p.entry_price) - buy_cost - calculate_sell_cost(n * px, self._costs)
+
+    def _sell_part(self, p: _Pos, n: int, px: float) -> None:
+        if not p.orig_shares:
+            p.orig_shares = p.shares
+        sell_value = n * px
+        self.capital += sell_value - calculate_sell_cost(sell_value, self._costs)
+        p.realised += self._leg_net(p, n, px)
+        p.sold_shares += n
+        p.sold_value += sell_value
+        p.shares -= n
 
     # ── day loop ─────────────────────────────────────────────────────────────
 
@@ -252,7 +291,29 @@ class FastBacktestEngine:
 
     def _exit_signal(self, slot: int, p: _Pos, r: int, ti: int) -> Optional[tuple[float, str]]:
         """Non-stop exit for an open position on row r: (fill, reason) or None."""
+        if self._exit_mode == "my_strategy":
+            return self._my_exit(slot, p, r, ti)
         return self._vcp_exit(slot, p, r, ti)
+
+    def _my_exit(self, slot: int, p: _Pos, r: int, ti: int) -> Optional[tuple[float, str]]:
+        """my_strategy (docs/WINNING_STRATEGY.md): when the high reaches +10%, sell half at
+        +10% (or the open, if it gaps above) and lift the stop to entry; from then on the stop
+        follows 10-day EMA x 0.97. No target, no time stop, no breakdown exit — the remaining
+        half leaves only through the stop. Stop changes act from the next day."""
+        md = self._md
+        if not p.armed:
+            target = p.entry_price * (1 + MY_PARTIAL_AT)
+            if float(md.high[r]) >= target:
+                half = p.shares // 2
+                if half:
+                    self._sell_part(p, half, max(target, float(md.open[r])))
+                p.armed = True
+                p.stop_loss = max(p.stop_loss, p.entry_price)
+        if p.armed and r - int(self._a[slot]) + 1 >= 10:
+            floor = float(self._sig.ema10[r]) * 0.97
+            if floor > p.stop_loss:
+                p.stop_loss = floor
+        return None
 
     def _vcp_exit(self, slot: int, p: _Pos, r: int, ti: int) -> Optional[tuple[float, str]]:
         """vcp_v2 exit geometry: trailing ratchet, technical breakdown, 15-day time stop."""

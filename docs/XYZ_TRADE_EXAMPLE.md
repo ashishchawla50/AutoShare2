@@ -131,8 +131,19 @@ arriving while all 4 are full is skipped.
 With 8 smaller positions (10% each) the order flips: the current exits take 219 trades
 for about +26%, and my_strategy takes 154 trades for about +20%.
 
-Both plans **lose money in 2025–26**, and neither has been through a full portfolio
-backtest yet.
+### Full portfolio test result (2026-10-11): current exits win
+
+₹50,000, 2% risk, both plans with a ₹90 first stop:
+
+| | Current exits | my_strategy |
+|---|---|---|
+| 2021–24: trades / PF / return | 126 / **1.40** / **+28.2%** | 96 / 1.40 / +25.1% |
+| 2025–26: trades / PF / return | 39 / **1.75** / **+8.2%** | 29 / 1.01 / +0.3% |
+| Average days held (calendar) | **19** | 40–48 |
+
+**The current exits stay.** my_strategy tied in 2021–24 but earned nothing in 2025–26.
+At ₹1 lakh, keep 2% risk with 20% positions. 8 smaller positions (1% risk) earned almost
+nothing in the same test. Details are in WINNING_STRATEGY.md.
 
 ---
 
@@ -147,5 +158,5 @@ is hit by normal noise about 72% of the time before the price reaches ₹104.
 - **The live bot today is different from both plans.** It starts with a ₹93 stop (−7%), and it
   also sells 33% at +20% and 33% at +30%. The backtest never sells part of a position
   (DIVERGENCE_INVENTORY.md, item B1).
-- **Neither plan is proven.** Both were picked from about 25 variants tested on the same signals.
-  The weak point of the strategy is which breakouts it buys, not how it sells.
+- **The full portfolio test kept the current exits;** my_strategy was rejected. The weak point of
+  the strategy is which breakouts it buys, not how it sells.
