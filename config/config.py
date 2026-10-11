@@ -301,6 +301,24 @@ class TradingConfig:
     # within 5 minutes. Never sell bot positions from the Kite app directly.
     MANUAL_EXIT_PATH: str = "data/manual_exit.txt"
 
+    # ── GOLDBEES lot-ladder alert (alerts/goldbees_ladder.py) ────────────────
+    # Owner's personal side alert, added 2026-10-12. ALERT-ONLY: it never places
+    # an order and is not part of the trading strategy. Each ladder buy is a lot
+    # with its own price; a lot is flagged for sale only at its own +8%, never
+    # at a loss. Chosen from ~50 variants on the 10:15 price over the past year,
+    # cross-checked on 2015-2026 closes: -1.5%/+8% beat gold in 7 of 12 years and
+    # had no losing year (buy-and-hold still made more overall).
+    GOLDBEES_LADDER_ENABLED: bool = True
+    GOLDBEES_LADDER_SYMBOL: str = "GOLDBEES"
+    GOLDBEES_LADDER_BUY_AMOUNT: float = 10000.0   # rupees per lot
+    GOLDBEES_LADDER_BUY_DROP_PCT: float = 0.015   # buy when 1.5% below the last trade price
+    GOLDBEES_LADDER_SELL_GAIN_PCT: float = 0.08   # sell a lot at +8% on its own buy price
+    GOLDBEES_LADDER_MAX_LOTS: int = 8             # cap on open lots (~₹80k in the ladder)
+    # A buy price inferred from Kite's average-price change is used only if it is
+    # within 20% of the live price; otherwise the live price stands in.
+    GOLDBEES_LADDER_PRICE_SANITY_PCT: float = 0.20
+    GOLDBEES_LADDER_STATE_FILE: str = ".goldbees_ladder.json"   # under DB_PATH
+
     # ── Data refresh schedules ──────────────────────────────────────────────
     # Fundamentals change quarterly; weekly refresh is more than sufficient
     FUNDAMENTALS_REFRESH_DAYS: int = 7
@@ -595,6 +613,10 @@ class TradingConfig:
         "eod_report":                "45 15 * * *",
         "database_backup":           "30 16 * * *",
         "weekly_report":             "0 7 * * 1",
+        # GOLDBEES lot-ladder alert: sync lots with Zerodha holdings, then check
+        # the 10:15 price (the 9:15 open is often a stray print for this ETF)
+        "goldbees_ladder_sync":      "10 10 * * *",
+        "goldbees_ladder_check":     "15 10 * * *",
     })
     SCHEDULER_MISFIRE_GRACE_SECONDS: int = 300
     # Bot's own pre-market window (login at 08:00). Not NSE's pre-open session,

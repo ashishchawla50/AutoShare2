@@ -127,7 +127,8 @@ AutoShare/
 │   └── monthly_report.py    # Monthly performance summary
 │
 ├── alerts/
-│   └── telegram_alert.py    # All Telegram alerts (prefixed [PAPER] in paper mode)
+│   ├── telegram_alert.py    # All Telegram alerts (prefixed [PAPER] in paper mode)
+│   └── goldbees_ladder.py   # Personal GOLDBEES lot-ladder alert (alert-only, never orders)
 │
 ├── scripts/
 │   ├── setup_db.py          # Initialize all 6 SQLite databases (safe to re-run)
@@ -166,6 +167,7 @@ AutoShare/
 │   ├── manual_blocklist.txt # Symbols the bot must never trade (no restart needed)
 │   ├── manual_exit.txt      # Write a symbol here → bot exits it cleanly within 5 min
 │   ├── .pivot_watchlist.json # vcp_v2 pivot watch state (survives restarts)
+│   ├── .goldbees_ladder.json # GOLDBEES ladder lots + core units (edit to correct a lot)
 │   └── backups/             # Rotating SQLite backups
 │
 └── logs/                    # Runtime only — gitignored
@@ -378,6 +380,13 @@ The bot is **not** an HTTP API server. External surfaces are:
 - Test suite (2026-10-11): 262 passed, 2 skipped, **15 failed**. The 15 failures predate PR #1 and are all backtest tests
   (`test_backtest.py` ×5, `test_reference_parity.py` ×9, `test_universe_churn.py` ×1). Causes: `reconstructed.db` is missing
   under the conftest tmp dir, and the test passes a `use_panel` kwarg that `BacktestEngine` no longer accepts.
+- **GOLDBEES lot-ladder alert (2026-10-12, `alerts/goldbees_ladder.py`): the owner's personal side alert, separate from the strategy.**
+  It never places orders and touches no strategy logic (it only adds 2 scheduler jobs).
+  - 10:10: syncs its lot list with Zerodha holdings. The first run records the units already held as untouchable "core".
+  - 10:15: sends BUY (₹10k at −1.5% from the last trade price) or SELL (each lot at its own +8%) Telegram alerts. Max 8 open lots.
+  - It uses the 10:15 price because GOLDBEES's 9:15 open is often a stray print (66 such days in 2021).
+  - Replaying the past year's 10:15 prices through the module reproduces the backtest's 31 trades exactly.
+  - Settings: the `GOLDBEES_LADDER_*` values in config. Tests: `tests/test_goldbees_ladder.py`.
 - Everything below this point is AutoShare's history (the live pilot ran old AutoShare code until the 2026-10-12 switch).
 
 **Phase: LIVE ₹50k Pilot (since 2026-07-20) — zero trades so far; machinery verified end-to-end through the risk gate on 2026-07-31**

@@ -14,6 +14,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
 
+from alerts import goldbees_ladder
 from config.config import config
 from config.holidays import is_trading_day
 from utils.time_utils import today_ist
@@ -77,6 +78,9 @@ def build_scheduler(bot) -> BackgroundScheduler:
         "database_backup":           lambda: bot.backup_databases(),
         # Weekly report
         "weekly_report":             lambda: bot.generate_weekly_report(),
+        # GOLDBEES lot-ladder alert (alert-only, never places orders)
+        "goldbees_ladder_sync":      lambda: goldbees_ladder.run_sync(bot._kite),
+        "goldbees_ladder_check":     lambda: goldbees_ladder.run_check(bot._kite),
     }
     missing = set(actions) ^ set(config.SCHEDULE)
     if missing:
