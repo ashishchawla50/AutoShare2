@@ -121,8 +121,12 @@ class TradingConfig:
     # ── Strategy parameters ─────────────────────────────────────────────────
     # Top 30% RS stocks significantly outperform; 85th+ = true market leaders
     MIN_RS_PERCENTILE: float = 70.0
-    # 2x volume on breakout day = institutional participation confirmation
-    MIN_BREAKOUT_VOLUME_MULTIPLIER: float = 2.0
+    # Breakout-day volume vs 50-day average (institutional participation).
+    # 1.5x since 2026-10-11: the only candidate to pass the pre-registered October
+    # test plan (docs/TEST_RESULTS_2026_10.md, B3c) — more trades and better PF and
+    # return in both windows vs 2.0x. Oracle fixtures were captured at 2.0x;
+    # tests/test_fast_engine.py pins that value.
+    MIN_BREAKOUT_VOLUME_MULTIPLIER: float = 1.5
     # 60-day VCP lookback: long enough to see full contraction cycle
     VCP_LOOKBACK_DAYS: int = 60
     # Tightness score > 50 = meaningful contraction; lower = loose/risky

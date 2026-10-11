@@ -116,7 +116,7 @@ Every morning the funnel runs (real numbers from 2026-08-11):
 
 Note the last two stages are where the patience lives: 23 stocks are sitting
 in a valid resting pattern right now, and on 2026-08-11 **none** of them broke
-out on the required 2× volume — so the bot bought nothing. That is the normal
+out on the required volume (2× then; 1.5× since 2026-10-11) — so the bot bought nothing. That is the normal
 state, not a fault.
 
 ---
@@ -228,10 +228,12 @@ normal volume:
 2. **strong_close** — close in the top 4% of the day's range ✓ *(finished
    strong, didn't break out and collapse back)*
 3. **bullish_body** — close above open ✓ *(a genuine green day)*
-4. **volume_surge** — 2.3× ≥ **2.0×** ✓ *(big institutions are buying, not
-   just small traders. THE critical check — and the one that has rejected
-   every pivot crossing so far in the live pilot: TITAN, EICHERMOT and others
-   crossed their ceilings on sleepy 0.4–1.5× volume, historically a fake move)*
+4. **volume_surge** — 2.3× ≥ **1.5×** ✓ *(big institutions are buying, not
+   just small traders. THE critical check. Lowered from 2.0× to 1.5× on
+   2026-10-11 after a pre-registered test: more trades, and better profit factor
+   and return in both test periods. Under 2.0× it rejected every pivot crossing
+   in the pilot's first weeks: TITAN, EICHERMOT and others crossed their
+   ceilings on sleepy 0.4–1.5× volume)*
 5. **healthy_range** — the day moved more than 0.5% ✓ *(not a dead day)*
 6. **not_extended** — ₹103.60 is only 3.6% past the pivot, limit 5% ✓ *(not
    chasing a bus that already left)*
@@ -400,6 +402,13 @@ Extra rigor:
 
 ## Changelog
 
+- **2026-10-11** — **Breakout volume requirement lowered from 2.0× to 1.5×**, in the
+  AutoShare2 research code. It was the only change to pass a pre-registered batch of
+  14 tests (docs/TEST_RESULTS_2026_10.md). On ₹50k it went from 130 → 161 trades with
+  PF 1.29 → 1.32 in 2021–24, and 39 → 50 trades with PF 1.78 → 1.95 in 2025–26. The same
+  batch found the edge **fragile**: only 2 of 5 years profitable, and a 28% chance of a
+  20% drawdown at ₹50k. Partial profits, the RS gate and a −10% first stop all failed
+  and stay as they are. **Not yet deployed to the live VPS.**
 - **2026-08-11** — Document refreshed against the live bot: funnel numbers
   (442/500 pond, 151 past trend checks, 23 watched), regime now BULL, watchlist
   list rewritten, scoreboard re-checked directly against the database.

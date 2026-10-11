@@ -34,14 +34,19 @@ def _fixture_paths() -> list[Path]:
 def shared(request):
     """Load arrays once for the module — the point of the fast engine."""
     from config.config import config as cfg
-    old = cfg.DB_PATH
+    old = cfg.DB_PATH, cfg.MIN_BREAKOUT_VOLUME_MULTIPLIER
     cfg.DB_PATH = str(REPO / "data")
+    # The fixtures were captured at 2.0x (default until 2026-10-11). Both engines read this
+    # value in one identical comparison, so the proof holds for any value; it is pinned here
+    # because the fixtures froze 2.0x. The reference engine that captured them (with the
+    # union-preload fix) was never committed, so they cannot be re-captured from this repo.
+    cfg.MIN_BREAKOUT_VOLUME_MULTIPLIER = 2.0
     from backtest.fast.data import Universe, load_market_data
     from backtest.fast.signals import load_signals
     md = load_market_data()
     out = {"md": md, "sig": load_signals(md), "uni": Universe()}
     yield out
-    cfg.DB_PATH = old
+    cfg.DB_PATH, cfg.MIN_BREAKOUT_VOLUME_MULTIPLIER = old
 
 
 @pytest.fixture
