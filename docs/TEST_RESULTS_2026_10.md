@@ -112,3 +112,54 @@ exists to catch. B2a removed no OOS trade at all, so OOS gives no evidence eithe
    - a market-heat filter (from B1)
    - fixing the start-state sensitivity: compare strategies on rolling start dates rather than
      one fixed split
+
+---
+
+## Follow-up 2026-10-11: breakout volume 1.5× adopted
+
+`MIN_BREAKOUT_VOLUME_MULTIPLIER` changed from 2.0 to 1.5 in `config/config.py` (commit `ef72fb6`),
+the only candidate that passed rule R (B3c).
+
+The oracle fixtures were **not** re-captured. The reference engine that produced them was never
+committed: it had the union-preload fix, and this repo's `backtest_engine.py` still has the bug
+that loads only the start month's universe. Re-capturing from it would freeze wrong numbers. Both
+engines read the volume multiple in one identical comparison, so `tests/test_fast_engine.py` pins
+2.0× and the parity proof stays exact. **Not deployed to the live VPS.**
+
+## Batch B: faster trades (plan `docs/TEST_PLAN_2026_10B.md`, committed `ba685b7` before running)
+
+**The user's thumb rule:** "2% in 5 days beats 10% in 2 years." Candidates are ranked by
+account CAGR and days held. Each figure is the median over 11 DEV start dates (2021-09 → 2024-03,
+each to 2024-12) and 4 OOS start dates (2025-01 → 2025-10, each to 2026-06). Baseline =
+the new default (volume 1.5×, −7% stop, current exits). Days held are calendar days.
+
+| Candidate | DEV CAGR | DEV PF | DEV DD | DEV days | DEV trades | OOS CAGR | OOS PF | OOS days | OOS trades | R2 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **baseline** | +7.0% | 1.32 | −11.8% | 18.4 | 124 | **+5.7%** | **1.55** | 18.8 | 44 | — |
+| F1 time stop 10 days | +13.2% | 1.42 | −14.0% | 15.4 | 137 | +4.1% | 1.34 | 13.7 | 49 | fail |
+| F2 from day 5, exit if under +2% | **+15.4%** | **1.58** | −9.9% | 14.1 | 149 | −3.6% | 0.72 | 9.7 | 55 | fail |
+| F3 take profit +10% | −1.1% | 0.96 | −12.1% | 11.2 | 165 | +4.4% | 1.42 | 13.6 | 52 | fail |
+| F4 take profit +5% | −0.4% | 0.99 | −10.9% | 8.3 | 194 | +1.8% | 1.16 | 9.6 | 56 | fail |
+| F5 F2 + F3 | −1.0% | 0.98 | −11.7% | 7.2 | 200 | −3.9% | 0.72 | 7.9 | 60 | fail |
+
+**Context, the benched rule strategies under the same rolling starts:**
+
+| Strategy | DEV CAGR | DEV PF | DEV days | OOS CAGR | OOS PF | OOS days |
+|---|---|---|---|---|---|---|
+| mean_reversion | −20.8% | 0.61 | 4.2 | −21.6% | 0.57 | 4.2 |
+| momentum | −1.7% | 0.95 | 12.7 | +1.8% | 1.08 | 12.5 |
+| momentum_v2 | −0.3% | 0.98 | 15.6 | −11.7% | 0.44 | 15.0 |
+| breakout | −5.3% | 0.85 | 7.8 | −14.4% | 0.50 | 8.3 |
+| breakout_v2 | −6.8% | 0.74 | 15.1 | −2.8% | 0.85 | 16.7 |
+
+**What it says about the thumb rule:**
+
+- **Fixed take-profits (+5%, +10%) remove the edge.** CAGR is about 0% in DEV. Selling every
+  winner early leaves nothing to pay for the −7% losers.
+- **Faster time stops (F1, F2) looked very good in 2021–24** (F2: +15.4% CAGR against +7.0%) but
+  **lost in 2025–26.** This is the same DEV-good, OOS-bad pattern as the B2 filters. F1 is the
+  closest call and is worth re-testing once more data exists.
+- **Every short-hold strategy in the codebase loses money.** Mean reversion holds 4 days but has
+  −21% CAGR. No tested strategy has delivered "2% in 5 days" repeatably on NSE after costs.
+- **The baseline already does what it can:** about 18 calendar days per trade and +5.7–7.0% CAGR
+  (median). It stays.
