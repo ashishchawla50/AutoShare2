@@ -82,4 +82,18 @@ Run on **B0 with A1's chosen stop**.
 
 ## Part 2 — B2 filters (written after B1, before the B2 OOS run)
 
-*(empty until B1 is done)*
+Written 2026-10-11 after B1 (DEV only), committed before any B2 run. Base: B0 with A1's
+chosen stop (−7%, since A1 failed). Judged by rule R. Code: `tools/b2_filters.py`.
+
+| ID | Filter | B1 evidence (240 DEV signals) |
+|---|---|---|
+| **B2a** | Drop a breakout whose RS percentile is **below 41**. A stock with no RS score (< 252 rows) passes. | Bottom quintile (RS 5.5–40.9): PF 0.58, −1.3% average; other quintiles PF 1.23–2.58 |
+| **B2b** | Drop a breakout whose close is **less than 0.8% above the pivot** | Bottom quintile (0.03%–0.81% above): PF 0.52, −1.9% average; other quintiles PF 1.45–2.97 |
+| **B2c** | Both B2a and B2b | — |
+
+Both have a trading rationale (weak relative strength, an indecisive breakout); they were not
+just the best-looking numbers.
+
+**Seen in B1 but not chosen:** market heat. Breadth above 0.78 or Nifty more than 3.4% above its
+50-day EMA showed PF 0.76–0.91, but it removes 40% of signals and the plan allows two filters.
+It is left as a future hypothesis.
