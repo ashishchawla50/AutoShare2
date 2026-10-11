@@ -211,7 +211,14 @@ mypy .
 # Manual strategy scan (no scheduler, one-off)
 python scripts/manual_scan.py
 
-# Run backtest — FAST (use this; seconds, local, identical results to the reference)
+# Quick strategy test — any strategy, seconds, local (windows end on the dataset's last date)
+python scripts/run_backtest.py --window 6m --strategy mean_reversion --capital 100000 --ignore-regime
+python scripts/run_backtest.py --window 1y                        # vcp_v2 (default), ₹50k, CNC costs
+python scripts/run_backtest.py --strategy all --window full --no-dd-halt --dump-trades t.csv
+#   strategies: vcp_v2 mean_reversion momentum momentum_v2..v4 breakout breakout_v2 all
+#   windows: 1m 3m 6m 1y 2y 3y 5y full   (or --start/--end)
+
+# vcp_v2-only fast backtest (same engine as run_backtest.py --strategy vcp_v2)
 python scripts/fast_backtest.py                                   # full 2021-09 → 2026-08, ₹50k, CNC costs
 python scripts/fast_backtest.py --start 2025-01-01 --end 2026-06-30
 python scripts/fast_backtest.py --start 2021-06-01 --end 2024-12-31 --no-dd-halt --dump-trades dev.csv
@@ -219,8 +226,11 @@ python scripts/fast_backtest.py --start 2021-06-01 --end 2024-12-31 --no-dd-halt
 # Prove the fast engine still matches the frozen reference fixtures (~10 s)
 pytest tests/test_fast_engine.py
 
-# Run backtest — slow reference engine (hours; only to capture new oracle fixtures)
-python scripts/run_backtest.py
+# Rule-strategy signal parity vs the strategy check_* functions (~40 s)
+pytest tests/test_fast_rules.py
+
+# Slow reference engine (hours; only to capture new oracle fixtures)
+python backtest/backtest_engine.py --start 2025-01-01 --end 2026-06-30 --strategy vcp_v2
 ```
 
 ### Fast backtester (`backtest/fast/`, added 2026-10-11 in AutoShare2)
@@ -231,6 +241,9 @@ All backtesting is local. `backtest/fast/` replays vcp_v2 on `data/reconstructed
 - `data.py` loads every OHLCV row into flat numpy arrays (cached in `data/cache/fast/`, keyed on the dataset fingerprint).
 - `signals.py` precomputes `analyse_stock`'s scan verdict (trend template, VCP, tightness, pivot) for every row of every security. The trend template is vectorised and the VCP check runs under numba. This is possible because the scan depends only on the stock's own history, never on the portfolio.
 - `engine.py` is the portfolio loop. Python touches only universe members with a pending pivot or a fresh setup; all other rejections are counted in bulk.
+- `rules.py` + `rule_engine.py` (added 2026-10-11) do the same for the benched rule strategies (mean_reversion, momentum v1–v4, breakout v1/v2, all). `rules.py` caches per-row entry verdicts; `tests/test_fast_rules.py` checks them row by row against `check_mean_reversion` / `check_momentum` / `check_range_breakout`. The portfolio loop follows `backtest_engine`'s branches for these strategies (caps, fixed-% sizing, targets, exits), but **it has no frozen oracle**, unlike vcp_v2.
+- `--ignore-regime` (both engines) trades every day at full size. It is research-only: such results are not comparable to validation runs. momentum_v4 keeps its BULL-only rule regardless.
+- `kernels.py` holds the numba code; it is imported only when a cache is built, so warm runs skip numba's import.
 - **Correctness proof:** `tests/test_fast_engine.py` reproduces all six frozen oracle fixtures exactly: every trade field, every funnel counter and final capital to 1e-6.
 - **Any change to strategy rules must be made in both engines,** or the reference re-captured (`tools/capture_reference_oracle.py`). A fast engine that no longer matches the oracle is wrong until proven otherwise.
 - **Warm-up difference:** indicators seed from each security's first row. That equals the reference for any start on or before 2023-06-01; later starts get a better-warmed EMA here than the reference would compute.

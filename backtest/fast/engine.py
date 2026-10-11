@@ -62,6 +62,8 @@ class _Pos:
     shares: int
     stop_loss: float
     vcp_low: Optional[float]
+    strategy: str = "vcp_v2"
+    target_price: float = 0.0    # fixed profit target; 0 = none
 
 
 class FastBacktestEngine:
@@ -81,6 +83,7 @@ class FastBacktestEngine:
         signals: Optional[Signals] = None,
         universe: Optional[Universe] = None,
         verbose: bool = True,
+        ignore_regime: bool = False,
     ) -> None:
         self.start_date = start_date
         self.end_date = end_date
@@ -90,6 +93,11 @@ class FastBacktestEngine:
         self._costs = COST_PROFILES[cost_profile]
         self._cost_profile = cost_profile
         self._dd_halt = dd_halt
+        # Research switch: trade every day at full size, whatever the regime
+        # (BEAR no longer blocks, CAUTIOUS no longer halves). Never used by the
+        # oracle fixtures — results with it on are not comparable to validation runs.
+        self._ignore_regime = ignore_regime
+        self._regime_name = "BULL"
         self._dd_halted_on: Optional[date] = None
         self._md = market
         self._sig = signals
@@ -219,62 +227,70 @@ class FastBacktestEngine:
             "entry_date": p.entry_date, "exit_date": exit_date,
             "entry_price": p.entry_price, "exit_price": exit_price, "shares": p.shares,
             "realised_pnl": net_pnl, "realised_pnl_pct": pnl_pct * 100,
-            "exit_reason": reason, "strategy": "vcp_v2",
+            "exit_reason": reason, "strategy": p.strategy,
         })
 
     # ── day loop ─────────────────────────────────────────────────────────────
 
     def _process_exits(self, sim_date: date, ti: int) -> None:
-        md, sig = self._md, self._sig
+        md = self._md
         to_close: list[tuple[int, float, str]] = []
         for slot, p in self._open.items():
             r = self._row(slot, ti)
             if r < 0:
                 continue
-            close = float(md.close[r])
             if float(md.low[r]) <= p.stop_loss:
                 o = float(md.open[r])
                 to_close.append((slot, min(p.stop_loss, o) if o > 0 else p.stop_loss, "stop_loss"))
                 continue
-
-            # Trailing ratchet (calculate_trailing_stop)
-            profit = (close - p.entry_price) / p.entry_price
-            rule_stop = p.entry_price * (1 - config.HARD_STOP_PCT)
-            for rule in reversed(TRAILING_RULES):
-                if profit >= rule.profit_pct:
-                    rs = p.entry_price * (1 + rule.trail_to)
-                    if rs > rule_stop:
-                        rule_stop = rs
-                    break
-            hist = r - int(self._a[slot]) + 1     # history length behind today's candle
-            if hist >= 10:
-                floor = float(sig.ema10[r]) * 0.97
-                if floor > rule_stop:
-                    rule_stop = floor
-            if rule_stop > p.stop_loss:
-                p.stop_loss = rule_stop
-
-            # Technical breakdown (check_technical_breakdown)
-            if hist >= 50:
-                if p.vcp_low and close < p.vcp_low:
-                    to_close.append((slot, close, f"Close {close:.2f} below VCP low "
-                                                  f"{p.vcp_low:.2f} — breakout failed"))
-                    continue
-                e50, vol, avg = float(sig.ema50[r]), float(md.volume[r]), float(sig.volsma50[r])
-                if close < e50 and vol > avg * 1.5:
-                    to_close.append((slot, close, f"Close {close:.2f} below 50-day EMA "
-                                                  f"{e50:.2f} on {vol / avg:.1f}x volume"))
-                    continue
-
-            # Time stop (should_exit_on_time_stop)
-            held = ti - p.entry_ti
-            if held >= config.TIME_STOP_DAYS and profit < config.TIME_STOP_MIN_PROFIT_PCT:
-                to_close.append((slot, close, f"Time stop: {held} days held, profit {profit:.1%} "
-                                              f"< {config.TIME_STOP_MIN_PROFIT_PCT:.0%} threshold"))
-                continue
+            hit = self._exit_signal(slot, p, r, ti)
+            if hit is not None:
+                to_close.append((slot, hit[0], hit[1]))
 
         for slot, px, reason in to_close:
             self._close(slot, px, sim_date, reason)
+
+    def _exit_signal(self, slot: int, p: _Pos, r: int, ti: int) -> Optional[tuple[float, str]]:
+        """Non-stop exit for an open position on row r: (fill, reason) or None."""
+        return self._vcp_exit(slot, p, r, ti)
+
+    def _vcp_exit(self, slot: int, p: _Pos, r: int, ti: int) -> Optional[tuple[float, str]]:
+        """vcp_v2 exit geometry: trailing ratchet, technical breakdown, 15-day time stop."""
+        md, sig = self._md, self._sig
+        close = float(md.close[r])
+        # Trailing ratchet (calculate_trailing_stop)
+        profit = (close - p.entry_price) / p.entry_price
+        rule_stop = p.entry_price * (1 - config.HARD_STOP_PCT)
+        for rule in reversed(TRAILING_RULES):
+            if profit >= rule.profit_pct:
+                rs = p.entry_price * (1 + rule.trail_to)
+                if rs > rule_stop:
+                    rule_stop = rs
+                break
+        hist = r - int(self._a[slot]) + 1     # history length behind today's candle
+        if hist >= 10:
+            floor = float(sig.ema10[r]) * 0.97
+            if floor > rule_stop:
+                rule_stop = floor
+        if rule_stop > p.stop_loss:
+            p.stop_loss = rule_stop
+
+        # Technical breakdown (check_technical_breakdown)
+        if hist >= 50:
+            if p.vcp_low and close < p.vcp_low:
+                return close, (f"Close {close:.2f} below VCP low "
+                               f"{p.vcp_low:.2f} — breakout failed")
+            e50, vol, avg = float(sig.ema50[r]), float(md.volume[r]), float(sig.volsma50[r])
+            if close < e50 and vol > avg * 1.5:
+                return close, (f"Close {close:.2f} below 50-day EMA "
+                               f"{e50:.2f} on {vol / avg:.1f}x volume")
+
+        # Time stop (should_exit_on_time_stop)
+        held = ti - p.entry_ti
+        if held >= config.TIME_STOP_DAYS and profit < config.TIME_STOP_MIN_PROFIT_PCT:
+            return close, (f"Time stop: {held} days held, profit {profit:.1%} "
+                           f"< {config.TIME_STOP_MIN_PROFIT_PCT:.0%} threshold")
+        return None
 
     def _scan(self, sim_date: date, ti: int, regime_mult: float) -> None:
         md, sig, st = self._md, self._sig, self._stats
@@ -411,7 +427,9 @@ class FastBacktestEngine:
                 self._stats["dd_halted_days"] += 1
                 if self._dd_halt:
                     continue
-            _, mult = self._regime_by_day.get(sim_date, ("BULL", 1.0))
+            self._regime_name, mult = self._regime_by_day.get(sim_date, ("BULL", 1.0))
+            if self._ignore_regime:
+                mult = 1.0
             if mult <= 0.0:
                 self._stats["regime_blocked_days"] += 1
                 continue
