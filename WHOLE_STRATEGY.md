@@ -3,7 +3,7 @@
 > **Living document.** Plain-language explanation of everything the bot does,
 > written for a reader with zero share-market knowledge. Update this file
 > whenever the strategy, filters, sizing, or live status change (see the
-> changelog at the bottom). Last updated: **2026-10-12**.
+> changelog at the bottom). Last updated: **2026-10-19**.
 
 ---
 
@@ -385,11 +385,14 @@ Extra rigor:
 
 ## 10. Live pilot scoreboard (updated 2026-08-11)
 
-> **2026-10-12 status:** the bot was **offline from 2026-08-31 to 2026-10-12**. Zerodha stopped
-> accepting its Kite Connect app (`Invalid api_key`), so it could not log in, refresh data or
-> trade. Still 0 real trades, 0 open positions. The live machine now runs the AutoShare2 code
-> (1.5× volume, −10% stop, live-safety fixes). It resumes trading once the Kite app is renewed.
-> The figures below are from 2026-08-11 and will be refreshed once it runs again.
+> **2026-10-19 status: running normally again.** Zerodha login has worked every trading day
+> since 2026-10-12, so data refreshes and the regime is read every 30 minutes. (The bot had been
+> offline from 2026-08-31 to 2026-10-12 because Zerodha rejected its Kite Connect app.) The
+> regime has been **BEAR** every day since: Nifty is about 6.6% below its 200-day average and only
+> about 39% of stocks are in uptrends, so no new entries. **Watchlist: 7 stocks** (AARTIIND, ACE,
+> AIIL, BALRAMCHIN, COFORGE, LAURUSLABS, SOLARINDS), each watched for 30 days. Still 0 real trades,
+> 0 open positions. Live settings: 1.5× breakout volume, −10% first stop, 2% risk / 20% cap.
+> The bullets below are from 2026-08-11.
 
 - **LIVE since 2026-07-20** with ₹50,000. Success metric for this phase:
   *does the machine execute faithfully* — not P&L.
@@ -423,6 +426,10 @@ Extra rigor:
 
 ## Changelog
 
+- **2026-10-19** — **Bot back online.** Zerodha login has succeeded every trading day since
+  2026-10-12 with the existing app key, so data and regime readings are flowing again. The
+  market regime has been BEAR all week, so the bot correctly made no trades. 7 stocks are on the
+  watchlist. No code or rule changes.
 - **2026-10-12** — **Live bot switched to the AutoShare2 code.** The old program was stopped
   and archived. The new one runs on the same server with the same capital (₹50,000), the same
   blocklist and the same records. It brings the 1.5× breakout volume, the −10% first stop and
