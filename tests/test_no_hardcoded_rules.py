@@ -20,7 +20,7 @@ REPO = Path(__file__).resolve().parent.parent
 SCANNED = [
     "main.py", "scheduler.py", "strategy", "exit", "regime", "risk", "scanner", "broker",
     "portfolio", "backtest/fast/engine.py", "backtest/fast/signals.py",
-    "backtest/regime_sim.py",
+    "backtest/regime_sim.py", "backtest/fast/live_filters.py",
 ]
 TRIVIAL = {0, 1, -1, 2, 100}
 
@@ -34,6 +34,7 @@ ALLOWED: dict[str, dict[float, str]] = {
     "regime/regime_detector.py": {3: "regime rank order", 4: "regime rank order",
                                   5: "regime rank order"},
     "scanner/stock_filter.py": {1e7: "rupees per crore"},
+    "backtest/fast/live_filters.py": {1e7: "rupees per crore"},
     "broker/auth_server.py": {400: "HTTP status", 403: "HTTP status", 500: "HTTP status",
                               10: "token log truncation"},
     "broker/kite_client.py": {60: "seconds per minute"},

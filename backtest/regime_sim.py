@@ -5,15 +5,18 @@ the same regime gate as the live bot: BEAR blocks all entries, CAUTIOUS
 halves position sizes, upgrades need 2-day confirmation while downgrades
 are immediate.
 
-Two documented differences from live:
-- India VIX history is not stored in market_data.db, so the VIX terms are
-  omitted: EXTREME_VOLATILITY and HIGH_VOLATILITY can never trigger, and the
-  BULL vix_calm condition passes by default. Net effect: the simulated gate
-  is slightly MORE permissive than live (it never blocks on volatility
-  spikes), so backtest results remain an upper bound in that dimension.
+Classification and size multipliers are the live functions themselves
+(regime_detector.classify_regime / regime_position_multiplier), so the rules cannot
+drift apart. Two documented differences from live:
+- VIX is optional. Pass the India VIX close series (backtest/data_loader.load_india_vix)
+  to apply the VIX tiers: EXTREME_VOLATILITY (> 35) and HIGH_VOLATILITY (25-35), and
+  the BULL vix_calm condition (< 20). Without it those terms are omitted and the gate
+  is slightly MORE permissive than live. Day T uses VIX's T-1 close; live reads the
+  current VIX at each check.
 - Breadth is computed over the symbols loaded in the backtest cache rather
-  than the full point-in-time Nifty 200 (survivorship is handled upstream
-  by PointInTimeUniverse).
+  than the live universe (survivorship is handled upstream by PointInTimeUniverse).
+- Upgrades are confirmed on 2 consecutive trading days; live confirms on 2
+  different calendar days.
 
 Look-ahead safety: the regime assigned to trading day T is classified from
 data through day T-1's close — matching the live bot, which detects the
@@ -28,21 +31,16 @@ from datetime import date
 import pandas as pd
 
 from config.config import config
+from regime.regime_detector import Regime, classify_regime, regime_position_multiplier, regime_rank
 
 logger = logging.getLogger("backtest.regime")
-
-# Multipliers mirror RegimeDetector._position_multiplier (VIX-less), from config
-REGIME_MULTIPLIER = {r: config.REGIME_SIZE_MULTIPLIER[r] for r in ("BEAR", "CAUTIOUS", "BULL")}
-
-# Higher rank = better regime; upgrades need 2-day confirmation
-_RANK = {"BEAR": 0, "CAUTIOUS": 1, "BULL": 2}
-
 
 def build_regime_series(
     ohlcv_by_symbol: dict[str, pd.DataFrame],
     nifty_df: pd.DataFrame,
     trading_days: list[date],
     breadth: pd.Series | None = None,
+    vix: pd.Series | None = None,
 ) -> dict[date, tuple[str, float]]:
     """Build a per-day regime mapping for the backtest period.
 
@@ -52,6 +50,7 @@ def build_regime_series(
         trading_days:    Backtest trading days (ascending).
         breadth:         Precomputed breadth on the Nifty index (fast engine);
                          when given, ohlcv_by_symbol is ignored.
+        vix:             India VIX close, date-indexed; None = VIX-less gate.
 
     Returns:
         Dict mapping trading day → (regime_name, position_size_multiplier).
@@ -81,32 +80,37 @@ def build_regime_series(
         else:
             breadth = pd.Series(config.REGIME_BREADTH_NEUTRAL, index=nifty_close.index)
 
-    # Raw daily classification (VIX-less _classify)
-    price_gap_pct = (nifty_close - nifty_ema200) / nifty_ema200
-    raw = pd.Series("CAUTIOUS", index=nifty_close.index)
-    is_bull = (
-        (nifty_close > nifty_ema200)
-        & (breadth >= config.BULL_BREADTH_THRESHOLD)
-        & trending_up.fillna(False)
-    )
-    raw[is_bull] = "BULL"
-    is_bear = ((breadth < config.BEAR_BREADTH_THRESHOLD)
-               | (price_gap_pct < -config.REGIME_BEAR_BELOW_EMA_PCT))
-    raw[is_bear] = "BEAR"
-    raw[nifty_ema200.isna()] = "CAUTIOUS"  # insufficient EMA warmup → neutral
+    # VIX close aligned to the Nifty dates (last known value carried forward)
+    if vix is not None:
+        vix_on = vix.astype(float).reindex(nifty_close.index, method="ffill")
+    else:
+        vix_on = pd.Series(float("nan"), index=nifty_close.index)
+
+    # Raw daily classification with the live rules, from each date's close
+    raw: dict[date, tuple[str, float | None]] = {}
+    for ts, c, e, b, t, v in zip(nifty_close.index, nifty_close.to_numpy(),
+                                 nifty_ema200.to_numpy(), breadth.reindex(nifty_close.index).to_numpy(),
+                                 trending_up.to_numpy(), vix_on.to_numpy()):
+        v = None if pd.isna(v) else float(v)
+        if pd.isna(e):
+            r = Regime.CAUTIOUS           # insufficient EMA warmup → neutral
+        else:
+            r = classify_regime(float(c), float(e), float(b), v, trending_up=bool(t))
+        raw[ts.date()] = (r.value, v)
 
     # Assign day T the classification from day T-1's close (no look-ahead),
     # then apply the live hysteresis: downgrades immediate, upgrades need the
     # same signal on 2 consecutive trading days.
-    raw_shifted = raw.shift(1)
-    raw_by_date = {ts.date(): r for ts, r in raw_shifted.items() if isinstance(r, str)}
+    dates = list(raw)
+    prior = {dates[i + 1]: raw[dates[i]] for i in range(len(dates) - 1)}
 
     result: dict[date, tuple[str, float]] = {}
-    current = "CAUTIOUS"
+    current = Regime.CAUTIOUS.value
+    current_vix: float | None = None
     pending: str | None = None
     for day in trading_days:
-        signal = raw_by_date.get(day, current)
-        if _RANK[signal] > _RANK[current]:
+        signal, day_vix = prior.get(day, (current, current_vix))
+        if regime_rank(Regime(signal)) > regime_rank(Regime(current)):
             if pending == signal:
                 current = signal   # 2nd day with the same upgrade signal → confirm
                 pending = None
@@ -115,7 +119,8 @@ def build_regime_series(
         else:
             current = signal       # downgrade or unchanged — immediate
             pending = None
-        result[day] = (current, REGIME_MULTIPLIER[current])
+        current_vix = day_vix
+        result[day] = (current, regime_position_multiplier(Regime(current), day_vix))
 
     counts = pd.Series([r for r, _ in result.values()]).value_counts()
     logger.info("Regime series built: %s", counts.to_dict())

@@ -3,6 +3,12 @@
 **Date:** 2026-08-11
 **Scope:** Phase 3 — rule-by-rule comparison of the two implementations.
 **Status:** Comparison only. No code unified yet.
+**Updated 2026-10-19:** row 1 corrected (the fabricated universe was retired on
+2026-08-11), and rows 2, 11, 12, 27, 29, 30 and 31 updated after the live-parity
+port to the **fast engine** (`backtest/fast/engine.py`, class `Parity`, all rules on
+by default). The slow reference engine (`backtest/backtest_engine.py`) is unchanged;
+the oracle fixtures pin the fast engine with `Parity.off()`. Two live bugs found on
+the way are in §2a.
 
 This supersedes `DIVERGENCE_INVENTORY.md`, which is stale in two places (A1 and
 B1 are both closed — see §4).
@@ -37,8 +43,8 @@ Legend: **MATCH** identical · **DIVERGE** materially different · **N/A** absen
 
 | # | Rule | Live | Backtest | Verdict |
 |---|---|---|---|---|
-| 1 | Universe source | NSE live Nifty 500, refreshed daily | `universe_snapshots` (fabricated, BLOCKER-1) | **DIVERGE — critical** |
-| 2 | Stock filters (9) | `run_batch_filters` (main.py:226) | none — `apply_all_filters` imported, never called | **DIVERGE (MAJOR-4)** |
+| 1 | Universe source | NSE live Nifty 500, refreshed daily | Point-in-time **Liquid-500** from `data/reconstructed.db` (`universe_liquid500`: monthly top 500 by traded value, 672 delisted securities kept, splits applied, unverifiable breaks quarantined). The fabricated `universe_snapshots` path was retired 2026-08-11 (`docs/DATA_FOUNDATION_REVIEW.md`) | DIVERGE (minor): Liquid-500 approximates, but is not, the historical Nifty 500 |
+| 2 | Stock filters (9) | `run_batch_filters` (main.py:226) | Fast engine: price, liquidity, circuit and data-quality replayed with live's rules (`backtest/fast/live_filters.py`, row-by-row parity test). Events: `--events-filter`. Market cap, pledge, D/E, surveillance: no history. IPO age: never fires live (Kite instruments have no listing date) | PARTIAL MATCH (fast engine) |
 | 3 | Trend template | `analyse_stock` | `analyse_stock` | MATCH |
 | 4 | VCP detection | `detect_vcp` | `detect_vcp` | MATCH |
 | 5 | Tightness gate (≥50) | `multi_timeframe` | `multi_timeframe` | MATCH |
@@ -47,8 +53,8 @@ Legend: **MATCH** identical · **DIVERGE** materially different · **N/A** absen
 | 8 | Breakout confirm | `is_valid_breakout` on last candle | `is_valid_breakout` on `prev_day_df[-1]` | MATCH |
 | 9 | Relative strength | 35% of composite score | **absent entirely** | **DIVERGE (MAJOR-6)** |
 | 10 | Ranking | `rank_setups` by composite | none — universe iteration order | **DIVERGE (MAJOR-5)** |
-| 11 | Regime gate (entry) | `regime_detector`, VIX-aware | `regime_sim`, VIX-less | DIVERGE (documented, backtest more permissive) |
-| 12 | Gap filter | 3 rules incl. `open > pivot×1.05` | 2 rules | **DIVERGE (MAJOR-8)** |
+| 11 | Regime gate (entry) | `regime_detector`, VIX-aware | `regime_sim` calls live's `classify_regime` / `regime_position_multiplier`; VIX tiers from `data/india_vix.csv` (T-1 close; live reads current VIX) | MATCH (fast engine, `vix` rule) |
+| 12 | Gap filter | 3 rules incl. `open > pivot×1.05` | 3 rules (`open_cap` rule) | MATCH (fast engine) |
 | 13 | Position sizing | `calculate_position_size` | `calculate_position_size` | MATCH |
 | 14 | Risk %, position cap | 2.0% / 20% | 2.0% / 20% | MATCH |
 | 15 | Dust floor | ₹6,000 × regime mult | ₹6,000 × regime mult | MATCH |
@@ -63,17 +69,41 @@ Legend: **MATCH** identical · **DIVERGE** materially different · **N/A** absen
 | 24 | Stop trigger basis | daily **close** (+ GTT intraday) | intraday **low**, fill `min(stop, open)` | DIVERGE in paper only — see §3 |
 | 25 | Technical breakdown | `check_technical_breakdown` | `check_technical_breakdown` | MATCH |
 | 26 | Time stop 15d/7% | `should_exit_on_time_stop` | `should_exit_on_time_stop` | MATCH |
-| 27 | **Regime exit** | `check_regime_exit` (main.py:989) | **absent** | **DIVERGE (MAJOR-7)** |
+| 27 | **Regime exit** | `check_regime_exit` (main.py:989) | 3rd straight BEAR / 2nd EXTREME_VOLATILITY trading day, all positions sold at the open (`regime_exit` rule) | MATCH the intended rule; live counts it wrongly (§2a) |
 | 28 | Partial profit | gated off (`ENABLE_PARTIAL_PROFIT=False`) | never called | MATCH (both off) |
-| 29 | Drawdown halt | `drawdown_monitor`, absorbing | absorbing, `--no-dd-halt` available | MATCH (both trapped) |
-| 30 | Daily/weekly/monthly loss limits | `check_all_limits` (main.py:608) | **absent** | **DIVERGE** |
-| 31 | Consecutive-loss pause | config exists, live-enforced | **absent** | DIVERGE |
+| 29 | Drawdown halt | 15% pause (lifts on recovery), 20% emergency flag (manual reset) | 15% pause (`dd_pause` rule); 20% absorbing, `--no-dd-halt` available | MATCH. The 10% half-size tier is dead in live (§2a) and not replayed. With no open positions equity cannot move, so the 15% pause is absorbing too |
+| 30 | Daily/weekly/monthly loss limits | `check_all_limits` (main.py:608) | `loss_limits` rule: realised P&L by exit date, rolling 7/30 calendar days; today's exits count only if filled at the open | MATCH (fast engine). Never binds at ₹50k over 2021-09→2026-08 |
+| 31 | Consecutive-loss pause | **not enforced**: `record_trade_result` only sends a Telegram alert | absent | MATCH (neither pauses) |
 | 32 | Costs | real broker charges | `--cost-model cnc` | MATCH when flag used |
 | 33 | Entry price basis | LTP at 09:30–10:30 | today's **open** (09:15) | **DIVERGE (minor, real)** |
 | 34 | Fill price recorded | broker average fill | assumed exact | DIVERGE (unavoidable) |
 
-**Count: 8 material divergences** (#1, 2, 9, 10, 12, 17, 27, 30), plus #33 and the
-paper-mode issues in §3.
+**Count (2026-10-19, fast engine): 3 material divergences** (#9, 10, 17: RS score,
+ranking, sector cap), plus #1 (Liquid-500 vs Nifty 500), #2's unreplayable filters,
+#33 and the paper-mode issues in §3. Was 8 on 2026-08-11.
+
+## 2a. Live bugs found during the 2026-10-19 port (not fixed; need sign-off)
+
+1. **Regime exit fires on day 1, not day 3.** `main.check_regime` adds 1 to
+   `_days_in_bear` on *every* regime check while BEAR persists, and the check runs every
+   30 minutes (`regime_intraday`, `*/30 9-15`). The counter reaches
+   `REGIME_EXIT_BEAR_DAYS` = 3 about an hour into the first BEAR session, so live sells
+   every position on the first BEAR day. A restart resets the counter to 0. Fix: count
+   once per trading day (store the last counted date).
+2. **The 10% drawdown half-size tier does nothing.** `RiskManager.approve_entry`
+   computes `min(regime multiplier, drawdown multiplier)` but only returns it in
+   `RiskCheckResult`; `check_entries` sizes the order before calling it and never
+   reads the multiplier back. Either apply it in sizing or delete
+   `DD_REDUCE_SIZE_AT` / `DD_REDUCED_SIZE_MULT`.
+3. **The drawdown peak never rises above starting capital.** `record_daily_metrics`
+   stores `MAX(peak_value)` of earlier rows; `update_peak_value` is never called. Live
+   measures drawdown from ₹50k, not from the high-water mark (all 85 VPS rows = ₹50,000).
+   The backtest uses the true running peak. See `docs/HALT_RESET.md` §2.
+4. **The 2026 holiday list was partly guessed.** `config/holidays.py` marked 7 days on
+   which NSE traded as holidays (Feb 16, Mar 4, 20, 30, Apr 8, Jun 18, Jul 7) and missed
+   real ones. `scheduler.py` skips every job on a listed holiday. Corrected against NSE's
+   holiday-master API in a separate commit. The calendar also has no 2021–2023 lists, which
+   is why `live_filters.py` uses the bhavcopy dates.
 
 ---
 

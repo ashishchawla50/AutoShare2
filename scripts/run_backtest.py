@@ -27,6 +27,7 @@ import argparse
 import logging
 import sys
 import time
+from dataclasses import fields
 from datetime import date
 from pathlib import Path
 
@@ -39,7 +40,7 @@ import numpy as np
 import pandas as pd
 
 from backtest.fast.data import Universe, load_market_data
-from backtest.fast.engine import EXIT_MODES, FastBacktestEngine
+from backtest.fast.engine import EXIT_MODES, FastBacktestEngine, Parity
 from backtest.fast.rule_engine import RULE_STRATEGIES, FastRuleEngine
 from backtest.fast.signals import load_signals
 from backtest.performance_analyzer import print_report
@@ -67,6 +68,27 @@ def _resolve_dates(args: argparse.Namespace, data_end: date) -> tuple[date, date
     if start >= end:
         sys.exit(f"start {start} must be before end {end}")
     return start, end
+
+
+def _parity(arg: str) -> Parity:
+    names = [n.strip() for n in arg.split(",") if n.strip()]
+    if names == ["all"]:
+        return Parity.off()
+    try:
+        return Parity.without(names)
+    except ValueError as exc:
+        sys.exit(str(exc))
+
+
+def _parity_line(engine) -> str:
+    s, on = engine._stats, [f.name for f in fields(engine.parity) if getattr(engine.parity, f.name)]
+    if not on:
+        return "Live-parity rules: off (pre-2026-10-19 engine)"
+    return (f"Live-parity rules on: {', '.join(on)} | open>pivot+cap {s['open_cap_filtered']} | "
+            f"regime exits {s['regime_exits']} | dd-pause days {s['dd_paused_days']} | "
+            f"loss-limit days {s['loss_limit_days']} | pre-scan drops: price {s['prefilter_price']:,} "
+            f"liquidity {s['prefilter_liquidity']:,} circuit {s['prefilter_circuit_breaker']:,} "
+            f"data-quality {s['prefilter_data_quality']:,}")
 
 
 def _funnel(strategy: str, s: dict) -> str:
@@ -128,6 +150,10 @@ def main() -> None:
                    help=f"max position as share of capital (default {config.MAX_POSITION_SIZE_PCT})")
     p.add_argument("--dump-trades", metavar="CSV", help="write the trade ledger to CSV")
     p.add_argument("--rebuild-cache", action="store_true", help="rebuild array + signal caches")
+    p.add_argument("--parity-off", metavar="RULES", default="",
+                   help="vcp_v2: switch off live-parity rules, comma-separated "
+                        "(open_cap,regime_exit,vix,dd_pause,loss_limits,live_filters) or 'all' "
+                        "for the pre-2026-10-19 engine. Default: all on")
     args = p.parse_args()
 
     if hasattr(sys.stdout, "reconfigure"):
@@ -149,7 +175,7 @@ def main() -> None:
                   market=md, signals=load_signals(md, rebuild=args.rebuild_cache),
                   universe=Universe(), verbose=False, ignore_regime=args.ignore_regime)
     if args.strategy == "vcp_v2":
-        engine = FastBacktestEngine(exit_mode=args.exit, **common)
+        engine = FastBacktestEngine(exit_mode=args.exit, parity=_parity(args.parity_off), **common)
     else:
         from backtest.fast.rules import load_rule_signals
         engine = FastRuleEngine(strategy=args.strategy,
@@ -171,6 +197,8 @@ def main() -> None:
              if args.strategy == "momentum_v4" else "")
           + f" | drawdown-halt days: {s['dd_halted_days']}"
           + (f" (first {engine._dd_halted_on})" if engine._dd_halted_on else ""))
+    if args.strategy == "vcp_v2":
+        print(_parity_line(engine))
     print(_speed(engine))
     print(f"Runtime: {time.perf_counter() - t0:.1f} s")
 

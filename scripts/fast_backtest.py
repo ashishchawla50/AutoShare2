@@ -32,6 +32,7 @@ from backtest.fast.engine import FastBacktestEngine
 from backtest.fast.signals import load_signals
 from backtest.performance_analyzer import print_report
 from config.config import config
+from scripts.run_backtest import _parity, _parity_line
 
 
 def main() -> None:
@@ -45,6 +46,10 @@ def main() -> None:
                    help="disable the absorbing 20%% drawdown halt to measure the underlying edge")
     p.add_argument("--dump-trades", metavar="CSV", help="write the trade ledger to CSV")
     p.add_argument("--rebuild-cache", action="store_true", help="rebuild array + signal caches")
+    p.add_argument("--parity-off", metavar="RULES", default="",
+                   help="vcp_v2: switch off live-parity rules, comma-separated "
+                        "(open_cap,regime_exit,vix,dd_pause,loss_limits,live_filters) or 'all' "
+                        "for the pre-2026-10-19 engine. Default: all on")
     args = p.parse_args()
 
     if hasattr(sys.stdout, "reconfigure"):
@@ -60,7 +65,7 @@ def main() -> None:
         cost_profile=args.cost_model,
         dd_halt=not args.no_dd_halt,
         market=md, signals=sig, universe=Universe(),
-        verbose=False,
+        verbose=False, parity=_parity(args.parity_off),
     )
     metrics = engine.run()
     print_report(metrics)
@@ -74,6 +79,7 @@ def main() -> None:
     print(f"Regime-blocked days: {s['regime_blocked_days']} | "
           f"drawdown-halt days: {s['dd_halted_days']}"
           + (f" (first {engine._dd_halted_on})" if engine._dd_halted_on else ""))
+    print(_parity_line(engine))
     print(f"Runtime: {time.perf_counter() - t0:.1f} s  "
           + "  ".join(f"{k}={v:.2f}s" for k, v in engine.timings.items()))
 

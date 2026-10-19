@@ -426,6 +426,14 @@ Extra rigor:
 
 ## Changelog
 
+- **2026-10-19** — **Backtest now copies more of the live bot's safety rules** (the
+  open-price cap, the 3-day BEAR sell-off, India VIX levels, the 15% drawdown pause,
+  the daily/weekly/monthly loss limits and four stock filters). No live rule changed. On this
+  more faithful test the strategy made **+12% over 5 years (profit factor 1.13)**, not +26%
+  (1.26). The chance that the edge is real fell from 80% to 65%. Found on the way: the
+  2026 holiday list had wrong dates, so the bot skipped some real trading days. The bot also
+  sells on the first BEAR day instead of the third, and it measures drawdown from the
+  starting ₹50,000 rather than from its highest point. Fixes await approval.
 - **2026-10-19** — **Bot back online.** Zerodha login has succeeded every trading day since
   2026-10-12 with the existing app key, so data and regime readings are flowing again. The
   market regime has been BEAR all week, so the bot correctly made no trades. 7 stocks are on the

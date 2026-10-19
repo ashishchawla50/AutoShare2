@@ -252,6 +252,18 @@ All backtesting is local. `backtest/fast/` replays vcp_v2 on `data/reconstructed
 - `kernels.py` holds the numba code; it is imported only when a cache is built, so warm runs skip numba's import.
 - **Correctness proof:** `tests/test_fast_engine.py` reproduces all six frozen oracle fixtures exactly: every trade field, every funnel counter and final capital to 1e-6.
 - **Any change to strategy rules must be made in both engines,** or the reference re-captured (`tools/capture_reference_oracle.py`). A fast engine that no longer matches the oracle is wrong until proven otherwise.
+- **Live-parity rules (2026-10-19), `Parity` in `engine.py`, ALL ON by default:**
+  - `open_cap` (open ≤ pivot + 5%), `regime_exit` (sell all at the open on the 3rd BEAR /
+    2nd EXTREME_VOLATILITY trading day), `vix` (India VIX tiers from `data/india_vix.csv`,
+    fetched by `tools/fetch_india_vix.py`), `dd_pause` (15%), `loss_limits`
+    (3% / 6% / 10%), and `live_filters` (price, liquidity, circuit, data quality:
+    `backtest/fast/live_filters.py`).
+  - Switch them off with `--parity-off a,b` or `--parity-off all`.
+  - The oracle tests, `tools/run_test_plan_2026_10.py` and the rule strategies run with
+    `Parity.off()`, so published results stay reproducible.
+  - Regime classification is now the live function itself (`regime_detector.classify_regime`).
+  - Tests: `tests/test_fast_live_parity.py`. The filter replay matches live's functions row by row.
+  - **Results produced before 2026-10-19 are pre-parity.** See `docs/LIVE_BACKTEST_PARITY.md`.
 - **Warm-up difference:** indicators seed from each security's first row. That equals the reference for any start on or before 2023-06-01; later starts get a better-warmed EMA here than the reference would compute.
 - Caches rebuild automatically when `reconstructed.db` or `signals.py` changes (`--rebuild-cache` forces it).
 
@@ -341,6 +353,18 @@ The bot is **not** an HTTP API server. External surfaces are:
 ---
 
 ## Current Development Status
+
+**2026-10-19: live-parity backtest (branch `claude/backtest-live-parity`).** Live config, ₹50k, 2021-09→2026-08:
+- **Parity engine: PF 1.13, +12.1%, 202 trades, max DD −14.5%, bootstrap 65.2%.** The pre-parity engine gave PF 1.26 / 218 / 79.9%.
+- Separate fresh-capital runs: DEV PF 1.37, OOS PF 1.74.
+- **The dev/OOS splits overstate the edge.** On the old engine, the same OOS dates scored PF 0.75 inside the continuous run against 1.93 as a fresh run. Only 51% of OOS trades are shared, because about 43% of signals are skipped for cash, so the open book decides which trades get taken.
+- **Live bugs found (not fixed; need sign-off), `docs/LIVE_BACKTEST_PARITY.md` §2a:**
+  - the BEAR-exit counter rises every 30-minute check, so live sells on day 1, not day 3;
+  - the 10% half-size tier is never applied;
+  - the drawdown peak never rises above starting capital;
+  - the 2026 holiday list was partly guessed (fixed in a separate commit).
+- Losing-streak pauses and the IPO-age filter do nothing live.
+- The 15% pause is absorbing when the book is flat. Halt procedure draft: `docs/HALT_RESET.md`.
 
 **AutoShare2 (2026-10-11): restart of AutoShare. Since 2026-10-11 it is the ONLY repo: all pulls, pushes and live deployment go through AutoShare2. The old AutoShare repo is retired (read-only history). Backtests run locally.**
 - **Switched 2026-10-12 00:21 IST: the VPS now runs AutoShare2** (`~/AutoShare2`, `main`). The old bot was stopped and its folder archived. Carried over: `.env`, the six live DBs, `manual_blocklist.txt`, `.regime_upgrade_state`, `.pivot_watchlist.json` (empty). On the VPS, before the switch: 0 open positions, 0 live trades ever, and the checkout was AutoShare `ca0e441` plus large uncommitted edits, not `6ca6d37`. Live config verified on the VPS: LIVE, ₹50k, 1.5× volume, −10% stop, 2%/20%, vcp_v2 only. VPS tests: 109/109 live-path tests pass; the full suite has 5 failures, the known `test_backtest.py` ones.

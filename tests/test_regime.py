@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from regime.regime_detector import Regime, RegimeDetector, _regime_rank
+from regime.regime_detector import Regime, RegimeDetector, regime_rank
 from regime.vix_monitor import classify_vix_regime, position_size_multiplier, should_halt_new_trades
 
 
@@ -151,7 +151,7 @@ def test_position_multiplier_values():
 
 # ── Regime Rank Tests ─────────────────────────────────────────────────────────
 
-def test_regime_rank_ordering():
-    assert _regime_rank(Regime.BULL) > _regime_rank(Regime.CAUTIOUS)
-    assert _regime_rank(Regime.CAUTIOUS) > _regime_rank(Regime.BEAR)
-    assert _regime_rank(Regime.BEAR) > _regime_rank(Regime.EXTREME_VOLATILITY)
+def testregime_rank_ordering():
+    assert regime_rank(Regime.BULL) > regime_rank(Regime.CAUTIOUS)
+    assert regime_rank(Regime.CAUTIOUS) > regime_rank(Regime.BEAR)
+    assert regime_rank(Regime.BEAR) > regime_rank(Regime.EXTREME_VOLATILITY)

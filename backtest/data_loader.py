@@ -148,3 +148,18 @@ def load_nifty_ohlcv(start: date, end: date) -> Optional[pd.DataFrame]:
         con.close()
     logger.warning("Nifty OHLCV not cached for %s→%s", start, end)
     return None
+
+
+def load_india_vix() -> pd.Series:
+    """India VIX daily close, date-indexed, from config.INDIA_VIX_CSV.
+
+    Raises FileNotFoundError when the file is absent: a run that asked for the
+    VIX tiers must never silently fall back to the VIX-less gate.
+    """
+    path = Path(config.DB_PATH) / config.INDIA_VIX_CSV
+    if not path.exists():
+        raise FileNotFoundError(
+            f"India VIX history not found at {path}. Fetch it with tools/fetch_india_vix.py "
+            "or run without the VIX tiers.")
+    df = pd.read_csv(path, parse_dates=["date"])
+    return df.set_index("date")["close"].astype(float).sort_index()
