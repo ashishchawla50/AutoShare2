@@ -43,12 +43,22 @@ def shared(request):
     cfg.MIN_BREAKOUT_VOLUME_MULTIPLIER = 2.0
     # Same for the first stop: the fixtures froze 7% (default until 2026-10-11, now 10%).
     cfg.HARD_STOP_PCT = 0.07
+    # And the trading calendar: the fixtures were captured with the estimated 2026 holiday
+    # list, replaced by NSE's official one on 2026-10-20. The engine's day loop comes from
+    # that calendar, so the old list is pinned for the proof.
+    import config.holidays as hol
+    old_2026 = hol._ALL_HOLIDAYS[2026]
+    hol._ALL_HOLIDAYS[2026] = {date(2026, m, d) for m, d in (
+        (1, 26), (2, 16), (3, 4), (3, 20), (3, 30), (4, 3), (4, 8), (4, 14), (5, 1), (5, 28),
+        (6, 18), (7, 7), (8, 15), (8, 27), (10, 2), (10, 21), (11, 9), (11, 10), (11, 24),
+        (12, 25))}
     from backtest.fast.data import Universe, load_market_data
     from backtest.fast.signals import load_signals
     md = load_market_data()
     out = {"md": md, "sig": load_signals(md), "uni": Universe()}
     yield out
     cfg.DB_PATH, cfg.MIN_BREAKOUT_VOLUME_MULTIPLIER, cfg.HARD_STOP_PCT = old
+    hol._ALL_HOLIDAYS[2026] = old_2026
 
 
 @pytest.fixture

@@ -355,7 +355,7 @@ The bot is **not** an HTTP API server. External surfaces are:
 ## Current Development Status
 
 **2026-10-19: live-parity backtest (branch `claude/backtest-live-parity`).** Live config, ₹50k, 2021-09→2026-08:
-- **Parity engine: PF 1.13, +12.1%, 202 trades, max DD −14.5%, bootstrap 65.2%.** The pre-parity engine gave PF 1.26 / 218 / 79.9%.
+- **Parity engine: PF 1.13, +12.9%, 203 trades, max DD −14.6%, bootstrap 66.1%.** The pre-parity engine gave PF 1.26 / 219 / 79.7%. These figures use the official 2026 holiday calendar; the old guessed calendar gave +12.1% / 202 trades.
 - Separate fresh-capital runs: DEV PF 1.37, OOS PF 1.74.
 - **The dev/OOS splits overstate the edge.** On the old engine, the same OOS dates scored PF 0.75 inside the continuous run against 1.93 as a fresh run. Only 51% of OOS trades are shared, because about 43% of signals are skipped for cash, so the open book decides which trades get taken.
 - **Live bugs found (not fixed; need sign-off), `docs/LIVE_BACKTEST_PARITY.md` §2a:**
