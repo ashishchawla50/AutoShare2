@@ -362,7 +362,8 @@ The bot is **not** an HTTP API server. External surfaces are:
   - the BEAR-exit counter rises every 30-minute check, so live sells on day 1, not day 3;
   - the 10% half-size tier is never applied;
   - the drawdown peak never rises above starting capital;
-  - the 2026 holiday list was partly guessed (fixed in a separate commit).
+  - the 2026 holiday list was partly guessed. **Fixed and deployed 2026-10-20** (`e5d85c1`, bot restarted 11:28 IST; Oct 20 holiday, Oct 21 and Nov 9 trading days).
+- Running pytest on the VPS writes test lines (fake symbols AAA/XYZ/GOOD) into the live `logs/*.log`; conftest isolates data paths, not log files. Harmless, but confusing when reading the logs.
 - Losing-streak pauses and the IPO-age filter do nothing live.
 - The 15% pause is absorbing when the book is flat. Halt procedure draft: `docs/HALT_RESET.md`.
 
