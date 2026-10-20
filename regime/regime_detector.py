@@ -155,42 +155,8 @@ class RegimeDetector:
         BEAR because it changes exit behaviour (force-close within 2 days), which
         matters even when already in cash (BEAR) mode.
         """
-        # EXTREME_VOLATILITY overrides everything — triggers forced exits
-        if vix is not None and vix > config.VIX_HALT_LEVEL:
-            return Regime.EXTREME_VOLATILITY
-
-        # BEAR: breadth collapse is always BEAR regardless of price.
-        # Price below EMA200 is only BEAR if the gap > 3% — a marginal miss
-        # (e.g. 0.9% below) with healthy breadth and low VIX is CAUTIOUS, not BEAR.
-        breadth_weak = breadth < config.BEAR_BREADTH_THRESHOLD
-        price_gap_pct = (nifty_close - nifty_ema200) / nifty_ema200  # negative = below
-        price_clearly_below_ema = price_gap_pct < -config.REGIME_BEAR_BELOW_EMA_PCT
-        if breadth_weak or price_clearly_below_ema:
-            return Regime.BEAR
-
-        # HIGH_VOLATILITY (25–35): only reached when market structure is NOT bearish
-        if vix is not None and vix > config.VIX_REDUCE_LEVEL:
-            return Regime.HIGH_VOLATILITY
-
-        # Check for Bull conditions (all 4 must be met)
-        price_above_ema = nifty_close > nifty_ema200
-        breadth_strong = breadth >= config.BULL_BREADTH_THRESHOLD
-        ema200_trending = self._is_nifty_trending_up()
-        vix_calm = vix is None or vix < config.VIX_CAUTION_LEVEL
-
-        if price_above_ema and breadth_strong and ema200_trending and vix_calm:
-            return Regime.BULL
-
-        # Nifty within 5% above OR within 3% below the 200 EMA → CAUTIOUS
-        near_ema = abs(price_gap_pct) <= max(config.NIFTY_EMA_NEAR_PCT, config.REGIME_NEAR_EMA_MIN_PCT)
-        if near_ema or (config.BEAR_BREADTH_THRESHOLD <= breadth < config.BULL_BREADTH_THRESHOLD):
-            return Regime.CAUTIOUS
-
-        # VIX in caution zone
-        if vix is not None and vix >= config.VIX_CAUTION_LEVEL:
-            return Regime.CAUTIOUS
-
-        return Regime.CAUTIOUS
+        return classify_regime(nifty_close, nifty_ema200, breadth, vix,
+                               trending_up=self._is_nifty_trending_up)
 
     def _apply_upgrade_confirmation(self, raw_regime: Regime) -> Regime:
         """Apply the 2-calendar-day confirmation rule for regime upgrades.
@@ -204,7 +170,7 @@ class RegimeDetector:
             return raw_regime
 
         prev = self._previous_regime
-        is_upgrade = _regime_rank(raw_regime) > _regime_rank(prev)
+        is_upgrade = regime_rank(raw_regime) > regime_rank(prev)
 
         if is_upgrade:
             today = date.today()
@@ -268,11 +234,7 @@ class RegimeDetector:
 
     def _position_multiplier(self, regime: Regime, vix: Optional[float]) -> float:
         """Return position size multiplier for the detected regime."""
-        if regime in (Regime.BEAR, Regime.EXTREME_VOLATILITY, Regime.HIGH_VOLATILITY,
-                      Regime.CAUTIOUS):
-            return config.REGIME_SIZE_MULTIPLIER[regime.name]
-        vix_mult = position_size_multiplier(vix)
-        return min(config.REGIME_SIZE_MULTIPLIER[Regime.BULL.name], vix_mult)
+        return regime_position_multiplier(regime, vix)
 
     def _log_regime(self, state: RegimeState) -> None:
         """Persist regime state to the history database."""
@@ -341,7 +303,66 @@ class RegimeDetector:
         return None
 
 
-def _regime_rank(regime: Regime) -> int:
+def classify_regime(
+    nifty_close: float,
+    nifty_ema200: float,
+    breadth: float,
+    vix: Optional[float],
+    trending_up,
+) -> Regime:
+    """Regime classification rules, shared by RegimeDetector and backtest/regime_sim.
+
+    trending_up is a bool, or a zero-argument callable evaluated only when the BULL
+    test is reached (the live detector passes its method). No hysteresis here.
+    """
+    # EXTREME_VOLATILITY overrides everything — triggers forced exits
+    if vix is not None and vix > config.VIX_HALT_LEVEL:
+        return Regime.EXTREME_VOLATILITY
+
+    # BEAR: breadth collapse is always BEAR regardless of price.
+    # Price below EMA200 is only BEAR if the gap > 3% — a marginal miss
+    # (e.g. 0.9% below) with healthy breadth and low VIX is CAUTIOUS, not BEAR.
+    breadth_weak = breadth < config.BEAR_BREADTH_THRESHOLD
+    price_gap_pct = (nifty_close - nifty_ema200) / nifty_ema200  # negative = below
+    price_clearly_below_ema = price_gap_pct < -config.REGIME_BEAR_BELOW_EMA_PCT
+    if breadth_weak or price_clearly_below_ema:
+        return Regime.BEAR
+
+    # HIGH_VOLATILITY (25–35): only reached when market structure is NOT bearish
+    if vix is not None and vix > config.VIX_REDUCE_LEVEL:
+        return Regime.HIGH_VOLATILITY
+
+    # Check for Bull conditions (all 4 must be met)
+    price_above_ema = nifty_close > nifty_ema200
+    breadth_strong = breadth >= config.BULL_BREADTH_THRESHOLD
+    ema200_trending = (trending_up() if callable(trending_up) else trending_up)
+    vix_calm = vix is None or vix < config.VIX_CAUTION_LEVEL
+
+    if price_above_ema and breadth_strong and ema200_trending and vix_calm:
+        return Regime.BULL
+
+    # Nifty within 5% above OR within 3% below the 200 EMA → CAUTIOUS
+    near_ema = abs(price_gap_pct) <= max(config.NIFTY_EMA_NEAR_PCT, config.REGIME_NEAR_EMA_MIN_PCT)
+    if near_ema or (config.BEAR_BREADTH_THRESHOLD <= breadth < config.BULL_BREADTH_THRESHOLD):
+        return Regime.CAUTIOUS
+
+    # VIX in caution zone
+    if vix is not None and vix >= config.VIX_CAUTION_LEVEL:
+        return Regime.CAUTIOUS
+
+    return Regime.CAUTIOUS
+
+
+def regime_position_multiplier(regime: Regime, vix: Optional[float]) -> float:
+    """Position size multiplier for a regime (shared with backtest/regime_sim)."""
+    if regime in (Regime.BEAR, Regime.EXTREME_VOLATILITY, Regime.HIGH_VOLATILITY,
+                  Regime.CAUTIOUS):
+        return config.REGIME_SIZE_MULTIPLIER[regime.name]
+    vix_mult = position_size_multiplier(vix)
+    return min(config.REGIME_SIZE_MULTIPLIER[Regime.BULL.name], vix_mult)
+
+
+def regime_rank(regime: Regime) -> int:
     """Higher rank = better (more bullish) regime. Used for upgrade detection."""
     ranking = {
         Regime.UNKNOWN: 0,

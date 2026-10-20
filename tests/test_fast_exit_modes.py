@@ -25,12 +25,13 @@ def run():
     cfg.DB_PATH = str(REPO / "data")
     cfg.HARD_STOP_PCT = 0.10
     from backtest.fast.data import Universe, load_market_data
-    from backtest.fast.engine import FastBacktestEngine
+    from backtest.fast.engine import FastBacktestEngine, Parity
     from backtest.fast.signals import load_signals
     md = load_market_data()
     eng = FastBacktestEngine(start_date=date(2023, 1, 1), end_date=date(2024, 12, 31),
                              market=md, signals=load_signals(md), universe=Universe(),
-                             verbose=False, dd_halt=False, exit_mode="my_strategy")
+                             verbose=False, dd_halt=False, exit_mode="my_strategy",
+                             parity=Parity.off())
     eng.run()
     yield eng
     cfg.DB_PATH, cfg.HARD_STOP_PCT = old

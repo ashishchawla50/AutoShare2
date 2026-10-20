@@ -58,7 +58,7 @@ def real_data_paths(monkeypatch):
 
 
 def _run(fx: dict, shared: dict):
-    from backtest.fast.engine import FastBacktestEngine
+    from backtest.fast.engine import FastBacktestEngine, Parity
     md, cfg = fx["metadata"], fx["metadata"]["config"]
     assert cfg["strategy"] == "vcp_v2"
     e = FastBacktestEngine(
@@ -67,7 +67,7 @@ def _run(fx: dict, shared: dict):
         starting_capital=cfg["starting_capital"],
         cost_profile=cfg["cost_profile"],
         market=shared["md"], signals=shared["sig"], universe=shared["uni"],
-        verbose=False,
+        verbose=False, parity=Parity.off(),     # fixtures predate the live-parity rules
     )
     metrics = e.run()
     trades = [{
@@ -117,6 +117,7 @@ def test_missing_benchmark_aborts(shared, real_data_paths, monkeypatch):
     import backtest.fast.engine as fe
     monkeypatch.setattr(fe, "load_nifty_ohlcv", lambda *a, **k: None)
     e = fe.FastBacktestEngine(date(2023, 1, 2), date(2023, 1, 10), market=shared["md"],
-                              signals=shared["sig"], universe=shared["uni"], verbose=False)
+                              signals=shared["sig"], universe=shared["uni"], verbose=False,
+                              parity=fe.Parity.off())
     with pytest.raises(fe.MissingBenchmarkError):
         e.run()

@@ -28,7 +28,7 @@ import numpy as np
 import pandas as pd
 
 from backtest.fast.data import Universe, load_market_data
-from backtest.fast.engine import FastBacktestEngine
+from backtest.fast.engine import FastBacktestEngine, Parity
 from backtest.fast.features import FeatureBook, rs_filter
 from backtest.fast.signals import load_signals
 from config.config import config
@@ -67,7 +67,7 @@ def run(window, **opts):
     a, b = window
     e = FastBacktestEngine(start_date=a, end_date=b, starting_capital=50_000.0, cost_profile="cnc",
                            dd_halt=False, market=MD, signals=signals(), universe=UNI,
-                           verbose=False, **opts)
+                           verbose=False, parity=Parity.off(), **opts)
     m = e.run()
     return m, e
 
@@ -344,7 +344,7 @@ def rolling(starts, end, engine_cls=None, **opts):
         else:
             e = FastBacktestEngine(start_date=s, end_date=end, starting_capital=50_000.0,
                                    dd_halt=False, market=MD, signals=signals(), universe=UNI,
-                                   verbose=False, **opts)
+                                   verbose=False, parity=Parity.off(), **opts)
         m = e.run()
         days = [(t["exit_date"] - t["entry_date"]).days for t in e._closed_trades]
         rows.append({"cagr": m.cagr_pct, "pf": m.profit_factor if m.total_trades else 0.0,
@@ -416,7 +416,7 @@ def velocity_runs(starts, end, rule_strategy=None, **opts):
         if rule_strategy:
             e = FastRuleEngine(strategy=rule_strategy, rules=load_rule_signals(MD), **kw, **opts)
         else:
-            e = FastBacktestEngine(**kw, **opts)
+            e = FastBacktestEngine(**kw, parity=Parity.off(), **opts)
         m = e.run()
         t = e._closed_trades
         rd = sum(x["entry_price"] * x["shares"] * max(1, (x["exit_date"] - x["entry_date"]).days) for x in t)

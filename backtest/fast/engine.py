@@ -16,13 +16,19 @@ fixing it there too — parity with the frozen oracle is the correctness proof):
   - the stop ratchet updates after the stop check, so it acts from the next day
   - the scan stops at the first member after the book fills (MAX_POSITIONS)
   - the drawdown halt is absorbing when enabled
+
+Live-parity rules (Parity, 2026-10-19), all ON by default and all OFF for the oracle
+fixtures, which predate them: live's open <= pivot + 5% gap rule, the regime exit
+(3rd BEAR day / 2nd EXTREME_VOLATILITY day, all positions sold at the open), India
+VIX regime tiers, the 15% drawdown entry pause, the daily/weekly/monthly realised-loss
+limits, and live's bhavcopy-derivable pre-scan filters (backtest/fast/live_filters.py).
 """
 
 from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import date, timedelta
 from typing import Optional
 
@@ -30,8 +36,9 @@ import numpy as np
 import pandas as pd
 
 from backtest.cost_model import COST_PROFILES, calculate_buy_cost, calculate_net_pnl, calculate_sell_cost
-from backtest.data_loader import load_nifty_ohlcv
+from backtest.data_loader import load_india_vix, load_nifty_ohlcv
 from backtest.fast.data import MarketData, Universe, load_market_data
+from backtest.fast.live_filters import LiveFilters
 from backtest.fast.signals import FAIL_TIGHTNESS, FAIL_TT, FAIL_VCP, HIGH_CONF, Signals, load_signals
 from backtest.performance_analyzer import BacktestMetrics, analyse, print_report
 from backtest.regime_sim import build_regime_series
@@ -51,7 +58,53 @@ class MissingBenchmarkError(RuntimeError):
 _STATS = ("data_ok", "analyse_called", "fail_tt", "fail_vcp", "fail_tightness",
           "fail_breakout_confirm", "fail_other", "pivot_watch_added", "pivot_watch_expired",
           "event_filtered", "high_conf", "gap_filtered", "size_invalid", "entered",
-          "regime_blocked_days", "dd_halted_days")
+          "regime_blocked_days", "dd_halted_days",
+          # live-parity rules (Parity)
+          "open_cap_filtered", "regime_exits", "dd_paused_days", "loss_limit_days",
+          "prefilter_price", "prefilter_liquidity", "prefilter_circuit_breaker",
+          "prefilter_data_quality")
+
+_BEAR, _EXTREME = "BEAR", "EXTREME_VOLATILITY"
+
+
+@dataclass(frozen=True)
+class Parity:
+    """Live rules replayed in the backtest. Default = all on (the live bot's behaviour).
+
+    open_cap      skip the entry if the open is above pivot x (1 + MAX_ENTRY_EXTENSION_PCT)
+                  (live breakout_detector.evaluate_gap's second rule)
+    regime_exit   sell every position at the open on the REGIME_EXIT_BEAR_DAYS-th straight
+                  BEAR day, or the REGIME_EXIT_EXTREME_VOL_DAYS-th EXTREME_VOLATILITY day
+                  (live exit.time_stop.check_regime_exit, counted in trading days)
+    vix           India VIX regime tiers (backtest/regime_sim.py; needs data/india_vix.csv)
+    dd_pause      no entries while drawdown from peak >= DD_HALT_ENTRIES_AT (lifts on
+                  recovery; live DrawdownMonitor._check_drawdown)
+    loss_limits   no entries while realised P&L over the day / WEEKLY_LOSS_WINDOW_DAYS /
+                  MONTHLY_LOSS_WINDOW_DAYS is at or below -DAILY/WEEKLY/MONTHLY_LOSS_LIMIT_PCT
+                  of equity (live DrawdownMonitor; today's exits count only if filled at
+                  the open, i.e. before the entry window)
+    live_filters  live pre-scan filters that bhavcopy can reproduce (live_filters.py)
+    """
+    open_cap: bool = True
+    regime_exit: bool = True
+    vix: bool = True
+    dd_pause: bool = True
+    loss_limits: bool = True
+    live_filters: bool = True
+
+    @classmethod
+    def off(cls) -> "Parity":
+        """The pre-2026-10-19 engine, which the frozen oracle fixtures pin."""
+        return cls(**{f.name: False for f in fields(cls)})
+
+    @classmethod
+    def without(cls, names) -> "Parity":
+        """All on except the named rules."""
+        known = {f.name for f in fields(cls)}
+        bad = set(names) - known
+        if bad:
+            raise ValueError(f"unknown parity rules {sorted(bad)}; known: {sorted(known)}")
+        return cls(**{n: n not in names for n in known})
 
 
 @dataclass
@@ -99,6 +152,7 @@ class FastBacktestEngine:
         caution_full_size: bool = False,
         entry_filter=None,
         take_profit: float = 0.0,
+        parity: Optional[Parity] = None,
     ) -> None:
         """Research options (all off by default, so the oracle path is untouched):
         exit_mode     "my_strategy" / "vcp_partials" (see _my_exit / _live_partials)
@@ -108,6 +162,7 @@ class FastBacktestEngine:
                       confirmed breakout; False drops it (its pivot is consumed)
         take_profit   sell everything when the day's high reaches entry x (1 + take_profit),
                       filled at that price (or the open, if it gaps above); 0 = off
+        parity        live rules to replay (Parity); None = all on. Parity.off() = oracle engine
         """
         if exit_mode not in EXIT_MODES:
             raise ValueError(f"exit_mode must be one of {EXIT_MODES}")
@@ -116,6 +171,7 @@ class FastBacktestEngine:
         self._caution_full = caution_full_size
         self._entry_filter = entry_filter
         self._tp = take_profit
+        self.parity = Parity() if parity is None else parity
         self.start_date = start_date
         self.end_date = end_date
         self.starting_capital = starting_capital
@@ -137,6 +193,8 @@ class FastBacktestEngine:
         self._stats = {k: 0 for k in _STATS}
         self._stats["filtered"] = 0
         self._closed_trades: list[dict] = []
+        self._exit_log: list[tuple[date, float, bool]] = []   # (exit_date, net P&L, filled at open)
+        self._filters: Optional[LiveFilters] = None
         self._equity_curve: dict[date, float] = {}
         self._regime_by_day: dict[date, tuple[str, float]] = {}
         self.timings: dict[str, float] = {}
@@ -202,7 +260,10 @@ class FastBacktestEngine:
                 f"({0 if nifty is None else len(nifty)} rows) for {data_start}→{self.end_date}")
         self._breadth_s = self._breadth(nifty)
         self._regime_by_day = build_regime_series(
-            {}, nifty, trading_days, breadth=self._breadth_s)
+            {}, nifty, trading_days, breadth=self._breadth_s,
+            vix=load_india_vix() if self.parity.vix else None)
+        if self.parity.live_filters:
+            self._filters = LiveFilters(md)
         self.timings["regime"] = time.perf_counter() - t0
 
     def _breadth(self, nifty: pd.DataFrame) -> pd.Series:
@@ -249,7 +310,8 @@ class FastBacktestEngine:
             pv += p.entry_price * p.shares
         return max(0.0, self.capital - pv * config.MIN_CASH_RESERVE_PCT)
 
-    def _close(self, slot: int, exit_price: float, exit_date: date, reason: str) -> None:
+    def _close(self, slot: int, exit_price: float, exit_date: date, reason: str,
+               at_open: bool = False) -> None:
         p = self._open.pop(slot)
         if self._slip:
             exit_price *= 1 - self._slip
@@ -265,6 +327,7 @@ class FastBacktestEngine:
             net_pnl, pnl_pct = calculate_net_pnl(p.entry_price, exit_price, p.shares, self._costs)
             sell_value = exit_price * p.shares
         self.capital += sell_value - calculate_sell_cost(sell_value, self._costs)
+        self._exit_log.append((exit_date, net_pnl, at_open))
         isin = self._isins[slot]
         self._closed_trades.append({
             "isin": isin,
@@ -297,21 +360,54 @@ class FastBacktestEngine:
 
     def _process_exits(self, sim_date: date, ti: int) -> None:
         md = self._md
-        to_close: list[tuple[int, float, str]] = []
+        to_close: list[tuple[int, float, str, bool]] = []
         for slot, p in self._open.items():
             r = self._row(slot, ti)
             if r < 0:
                 continue
             if float(md.low[r]) <= p.stop_loss:
                 o = float(md.open[r])
-                to_close.append((slot, min(p.stop_loss, o) if o > 0 else p.stop_loss, "stop_loss"))
+                to_close.append((slot, min(p.stop_loss, o) if o > 0 else p.stop_loss, "stop_loss",
+                                 0 < o <= p.stop_loss))
                 continue
             hit = self._exit_signal(slot, p, r, ti)
             if hit is not None:
-                to_close.append((slot, hit[0], hit[1]))
+                to_close.append((slot, hit[0], hit[1], False))
 
-        for slot, px, reason in to_close:
-            self._close(slot, px, sim_date, reason)
+        for slot, px, reason, at_open in to_close:
+            self._close(slot, px, sim_date, reason, at_open=at_open)
+
+    def _regime_exit(self, sim_date: date, ti: int, reason: str) -> None:
+        """Sell every open position at today's open (live check_regime_exit). A position
+        with no candle today is sold on its next candle."""
+        today = np.datetime64(sim_date, "D").astype(np.int64)
+        for slot in list(self._open):
+            r = self._row(slot, ti)
+            if r < 0 or int(self._md.dates[r]) != today or float(self._md.open[r]) <= 0:
+                continue
+            self._close(slot, float(self._md.open[r]), sim_date, reason, at_open=True)
+            self._stats["regime_exits"] += 1
+
+    def _loss_limit_hit(self, sim_date: date, pv: float) -> bool:
+        """Live DrawdownMonitor's realised-loss limits, as seen at the entry window."""
+        if pv <= 0:
+            return False
+        day = week = month = 0.0
+        w0 = sim_date - timedelta(days=config.WEEKLY_LOSS_WINDOW_DAYS)
+        m0 = sim_date - timedelta(days=config.MONTHLY_LOSS_WINDOW_DAYS)
+        for d, pnl, at_open in reversed(self._exit_log):
+            if d < m0:
+                break
+            if d == sim_date and not at_open:
+                continue                      # happens after the entry window
+            month += pnl
+            if d >= w0:
+                week += pnl
+            if d == sim_date:
+                day += pnl
+        return (day / pv <= -config.DAILY_LOSS_LIMIT_PCT
+                or week / pv <= -config.WEEKLY_LOSS_LIMIT_PCT
+                or month / pv <= -config.MONTHLY_LOSS_LIMIT_PCT)
 
     def _exit_signal(self, slot: int, p: _Pos, r: int, ti: int) -> Optional[tuple[float, str]]:
         """Non-stop exit for an open position on row r: (fill, reason) or None."""
@@ -411,6 +507,7 @@ class FastBacktestEngine:
 
         available_cash = self._available_cash()
         watch_days = timedelta(days=config.VCP2_PIVOT_WATCH_DAYS)
+        today = np.datetime64(sim_date, "D").astype(np.int64)
         cutoff = len(U)          # members at index >= cutoff are never reached (book full)
         for j in np.nonzero(event)[0]:
             slot = int(U[j])
@@ -420,6 +517,12 @@ class FastBacktestEngine:
                 del self._pending[slot]
                 st["pivot_watch_expired"] += 1
                 pend = None
+
+            if self._filters is not None:
+                failed = self._filters.check(int(self._a[slot]), p_row, today)
+                if failed:
+                    st["prefilter_" + failed] += 1
+                    continue                  # live drops it from today's scan
 
             if pend is None:
                 if verdict[j] == HIGH_CONF and sig.pivot[p_row] > 0:
@@ -489,6 +592,9 @@ class FastBacktestEngine:
             if gap > config.MAX_GAP_UP_PCT or gap < -config.MAX_GAP_DOWN_PCT:
                 st["gap_filtered"] += 1
                 return False
+        if self.parity.open_cap and entry_price > pivot * (1 + config.MAX_ENTRY_EXTENSION_PCT):
+            st["open_cap_filtered"] += 1
+            return False
         if self._slip:
             entry_price *= 1 + self._slip
             stop_loss = calculate_stop_loss_price(entry_price)
@@ -522,10 +628,22 @@ class FastBacktestEngine:
         self._open: dict[int, _Pos] = {}
         self._pending: dict[int, tuple[float, float, date]] = {}
         peak = self.starting_capital
+        prev_regime, regime_days = "", 0
 
         t0 = time.perf_counter()
         for ti, sim_date in enumerate(trading_days):
             self._sim_date = sim_date
+            if self.parity.regime_exit and not self._ignore_regime:
+                reg = self._regime_by_day.get(sim_date, ("BULL", 1.0))[0]
+                if reg in (_BEAR, _EXTREME):
+                    regime_days = regime_days + 1 if reg == prev_regime else 1
+                else:
+                    regime_days = 0
+                prev_regime = reg
+                if self._open and ((reg == _BEAR and regime_days >= config.REGIME_EXIT_BEAR_DAYS)
+                                   or (reg == _EXTREME
+                                       and regime_days >= config.REGIME_EXIT_EXTREME_VOL_DAYS)):
+                    self._regime_exit(sim_date, ti, f"regime_exit_{reg.lower()}")
             self._process_exits(sim_date, ti)
             pv = self._portfolio_value(ti)
             self._equity_curve[sim_date] = pv
@@ -541,6 +659,12 @@ class FastBacktestEngine:
                 mult = 1.0
             if mult <= 0.0:
                 self._stats["regime_blocked_days"] += 1
+                continue
+            if self.parity.dd_pause and (peak - pv) / peak >= config.DD_HALT_ENTRIES_AT:
+                self._stats["dd_paused_days"] += 1
+                continue
+            if self.parity.loss_limits and self._loss_limit_hit(sim_date, pv):
+                self._stats["loss_limit_days"] += 1
                 continue
             if len(self._open) < config.MAX_POSITIONS:
                 self._scan(sim_date, ti, mult)

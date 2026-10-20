@@ -349,6 +349,9 @@ class TradingConfig:
             "ALLOW_FABRICATED_BACKTEST_DATA", "false").lower() == "true"
     )
     RECONSTRUCTED_DB: str = "reconstructed.db"
+    # India VIX daily history for the backtest's VIX regime tiers (under DB_PATH).
+    # Regenerate with tools/fetch_india_vix.py (Kite historical data, needs a token).
+    INDIA_VIX_CSV: str = "india_vix.csv"
 
     # ── Paths ────────────────────────────────────────────────────────────────
     DB_PATH: str = "data"

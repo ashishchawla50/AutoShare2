@@ -25,7 +25,7 @@ from config.config import config
 
 logger = logging.getLogger("backtest.fast.data")
 
-CACHE_VERSION = "1"
+CACHE_VERSION = "2"   # 2: adj_factor column (live-filter price test)
 
 
 def cache_dir() -> Path:
@@ -92,6 +92,7 @@ class MarketData:
     low: np.ndarray
     close: np.ndarray
     volume: np.ndarray
+    adj: np.ndarray           # adj_factor: adjusted price = traded price x adj
 
     def __post_init__(self) -> None:
         self.index = {s: k for k, s in enumerate(self.isins.tolist())}
@@ -101,7 +102,7 @@ class MarketData:
         return int(self.offsets[k]), int(self.offsets[k + 1])
 
 
-_FIELDS = ("offsets", "dates", "open", "high", "low", "close", "volume")
+_FIELDS = ("offsets", "dates", "open", "high", "low", "close", "volume", "adj")
 
 
 def load_market_data(rebuild: bool = False) -> MarketData:
@@ -116,7 +117,7 @@ def load_market_data(rebuild: bool = False) -> MarketData:
     con = sqlite3.connect(f"file:{_db_path()}?mode=ro", uri=True)
     try:
         rows = con.execute(
-            "SELECT isin, trade_date, open, high, low, close, volume "
+            "SELECT isin, trade_date, open, high, low, close, volume, adj_factor "
             "FROM ohlcv_adjusted ORDER BY isin, trade_date").fetchall()
     finally:
         con.close()
@@ -129,7 +130,7 @@ def load_market_data(rebuild: bool = False) -> MarketData:
     md = MarketData(key=key, isins=isins, offsets=offsets, dates=dates,
                     open=np.ascontiguousarray(num[:, 0]), high=np.ascontiguousarray(num[:, 1]),
                     low=np.ascontiguousarray(num[:, 2]), close=np.ascontiguousarray(num[:, 3]),
-                    volume=np.ascontiguousarray(num[:, 4]))
+                    volume=np.ascontiguousarray(num[:, 4]), adj=np.ascontiguousarray(num[:, 5]))
     d.mkdir(parents=True, exist_ok=True)
     for f in _FIELDS:
         np.save(d / f"{f}.npy", getattr(md, f))

@@ -27,7 +27,7 @@ import numpy as np
 
 from backtest.cost_model import calculate_buy_cost
 from backtest.data_loader import load_nifty_ohlcv
-from backtest.fast.engine import FastBacktestEngine, _Pos
+from backtest.fast.engine import FastBacktestEngine, Parity, _Pos
 from backtest.fast.rules import PASS, RuleSignals, bo_score, load_rule_signals, mom_score, mr_score
 from config.config import config
 
@@ -84,6 +84,9 @@ class FastRuleEngine(FastBacktestEngine):
                  rules: Optional[RuleSignals] = None, **kwargs) -> None:
         if strategy not in RULE_STRATEGIES:
             raise ValueError(f"unknown rule strategy {strategy!r}; one of {RULE_STRATEGIES}")
+        # The benched rule strategies keep the pre-parity engine unless asked: their
+        # published results were produced without the live-parity rules.
+        kwargs.setdefault("parity", Parity.off())
         super().__init__(*args, **kwargs)
         self.strategy = strategy
         self._rules = rules
