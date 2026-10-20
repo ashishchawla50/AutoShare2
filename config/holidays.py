@@ -53,29 +53,31 @@ _NSE_HOLIDAYS_2025: set[datetime.date] = {
     datetime.date(2025, 12, 25),  # Christmas
 }
 
-# NSE equity segment holidays 2026
-# NOTE: dates marked (tentative) were estimated from lunar-calendar projections.
-# VERIFY against the official NSE holiday circular before going live.
+# NSE equity segment holidays 2026 — official list from NSE's holiday-master API
+# (type=trading, CM segment), fetched 2026-10-19. Replaces an estimated list that had
+# 7 real trading days marked as holidays (Feb 16, Mar 4, 20, 30, Apr 8, Jun 18, Jul 7)
+# and missed Jan 15, Mar 3, 26, 31, Jun 26, Sep 14, Oct 20. Weekend entries are kept
+# for completeness; they change nothing.
 _NSE_HOLIDAYS_2026: set[datetime.date] = {
+    datetime.date(2026, 1, 15),   # Municipal Corporation Election - Maharashtra
     datetime.date(2026, 1, 26),   # Republic Day
-    datetime.date(2026, 2, 16),   # Mahashivratri
-    datetime.date(2026, 3, 4),    # Holi
-    datetime.date(2026, 3, 20),   # Id-Ul-Fitr (Ramzan Id) - tentative
-    datetime.date(2026, 3, 30),   # Ram Navami - tentative
+    datetime.date(2026, 2, 15),   # Mahashivratri (Sunday)
+    datetime.date(2026, 3, 3),    # Holi
+    datetime.date(2026, 3, 21),   # Id-Ul-Fitr (Ramadan Eid) (Saturday)
+    datetime.date(2026, 3, 26),   # Shri Ram Navami
+    datetime.date(2026, 3, 31),   # Shri Mahavir Jayanti
     datetime.date(2026, 4, 3),    # Good Friday
-    datetime.date(2026, 4, 8),    # Mahavir Jayanti - tentative
-    datetime.date(2026, 4, 14),   # Dr. Ambedkar Jayanti
+    datetime.date(2026, 4, 14),   # Dr. Baba Saheb Ambedkar Jayanti
     datetime.date(2026, 5, 1),    # Maharashtra Day
-    datetime.date(2026, 5, 28),   # Buddha Purnima - tentative
-    datetime.date(2026, 6, 18),   # Id-Ul-Zuha / Bakri Id - tentative
-    datetime.date(2026, 7, 7),    # Moharram - tentative
-    datetime.date(2026, 8, 15),   # Independence Day
-    datetime.date(2026, 8, 27),   # Ganesh Chaturthi - tentative
+    datetime.date(2026, 5, 28),   # Bakri Id
+    datetime.date(2026, 6, 26),   # Muharram
+    datetime.date(2026, 8, 15),   # Independence Day (Saturday)
+    datetime.date(2026, 9, 14),   # Ganesh Chaturthi
     datetime.date(2026, 10, 2),   # Mahatma Gandhi Jayanti
-    datetime.date(2026, 10, 21),  # Dussehra - tentative
-    datetime.date(2026, 11, 9),   # Diwali Laxmi Puja - tentative
-    datetime.date(2026, 11, 10),  # Diwali Balipratipada - tentative
-    datetime.date(2026, 11, 24),  # Gurunanak Jayanti - tentative
+    datetime.date(2026, 10, 20),  # Dussehra
+    datetime.date(2026, 11, 8),   # Diwali Laxmi Pujan (Sunday; Muhurat session timing per NSE circular)
+    datetime.date(2026, 11, 10),  # Diwali-Balipratipada
+    datetime.date(2026, 11, 24),  # Prakash Gurpurb Sri Guru Nanak Dev
     datetime.date(2026, 12, 25),  # Christmas
 }
 
